@@ -214,6 +214,7 @@ test('HTTP接口不回传Key，修改请求须来自当前页面，媒体支持�
     assert.equal(concurrentRead.images.limit,50);assert.equal(concurrentRead.videos.limit,1);
     assert.equal((await fetch(`${base}/image-viewer.js`)).status,200);
     assert.equal((await fetch(`${base}/settings-ui.js`)).status,200);
+    assert.equal((await fetch(`${base}/model-options.js`)).status,200);
     const blocked = await fetch(`${base}/api/projects`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
     assert.equal(blocked.status, 403);
     assert.equal((await fetch(`${base}/.env`)).status, 404);

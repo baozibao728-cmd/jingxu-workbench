@@ -67,20 +67,10 @@ test('隔天启动：有编号但下载失败的视频自动只查原任务并�
 });
 
 test('重拆标记全部后续分镜待对齐并拦截提交，确认后解除；分镜编号重新连续排列',async()=>{
- const f=await fixture();try{f.project.shots[1].promptTemplate='{分镜2}\n{{ref:hero-id}} 望向窗外。';await f.workflow.rebuildShot(f.project.id,'s1',{duration:30});await f.workflow.active.get(`rebuild:${f.project.id}:s1`);const downstream=f.project.shots[2];assert.equal(downstream.continuityReview.state,'required');assert.match(downstream.promptTemplate,/\{分镜3\}/);assert.throws(()=>f.workflow.review(f.project.id,[downstream.id]),/对齐/);await f.workflow.acceptContinuity(f.project.id,downstream.id);assert.equal(f.workflow.review(f.project.id,[downstream.id]).totalSeconds,15);assert.equal(f.submissions(),0);}finally{await f.cleanup();}
+ const f=await fixture();try{f.project.shots[1].promptTemplate='{分镜2}\n{{ref:hero-id}} 望向窗外。';await f.workflow.rebuildShot(f.project.id,'s1',{duration:30});await f.workflow.active.get(`rebuild:${f.project.id}:s1`);const downstream=f.project.shots[2];assert.equal(downstream.continuityReview.state,'required');assert.match(downstream.promptTemplate,/\{分镜3\}/);assert.throws(()=>f.workflow.review(f.project.id,[downstream.id]),/衔接/);await f.workflow.acceptContinuity(f.project.id,downstream.id);assert.equal(f.workflow.review(f.project.id,[downstream.id]).totalSeconds,15);assert.equal(f.submissions(),0);}finally{await f.cleanup();}
 });
 
-test('顺序AI对齐承接最新上一镜、保留原终点和台词；全部成功才落盘，失败保持原镜与旧成片',async()=>{
- const f=await fixture();try{
-  f.project.shots.push({...structuredClone(f.project.shots[1]),id:'s3',title:'离开',promptTemplate:'{{ref:hero-id}} 主角：“我走了。”'});
-  f.project.shots[1].video={file:'old-next.mp4',duration:15};
-  await f.workflow.editShot(f.project.id,'s1',{prompt:'@主角 拿起信，面向窗外。'});
-  const original=structuredClone(f.project.shots),calls=[];let failLast=true;
-  f.workflow.factories.text=()=>({generateJson:async req=>{const input=JSON.parse(req.input);calls.push(input);if(input.segmentNumber===3&&failLast)throw Error('模拟第三镜失败');return{duration:15,boundaryConfirmation:input.locked,promptTemplate:`{分镜${input.segmentNumber}}\n{{ref:hero}} 本段起始状态：接上镜。\n`+(input.segmentNumber===3?'主角：“我走了。”':'望向窗外，放下信。')};}});
-  await f.workflow.alignFollowing(f.project.id);await f.workflow.active.get(`align:${f.project.id}`);assert.deepEqual(f.project.shots,original);assert.equal(f.project.preparation.state,'failed');
-  failLast=false;calls.length=0;await f.workflow.alignFollowing(f.project.id);await f.workflow.active.get(`align:${f.project.id}`);assert.equal(f.project.preparation.state,'completed');assert.equal(f.project.shots[1].continuityReview.state,'aligned');assert.equal(f.project.shots[2].continuityReview.state,'aligned');assert.equal(calls[1].locked.start,f.project.shots[1].continuity.end);assert.equal(f.project.shots[1].video.file,'old-next.mp4');assert.equal(f.project.storyboardHistory.at(-1).originals[1].promptTemplate,original[1].promptTemplate);assert.doesNotThrow(()=>f.workflow.review(f.project.id,['s2','s3']));assert.equal(f.submissions(),0);
- }finally{await f.cleanup();}
-});
+test('旧一键对齐已停用，提示改用全部重解析，不调用模型或更改分镜',async()=>{const f=await fixture();try{const original=structuredClone(f.project.shots);await assert.rejects(f.workflow.alignFollowing(f.project.id),error=>error.status===410&&/全部重新解析分镜/.test(error.message));assert.deepEqual(f.project.shots,original);assert.equal(f.calls.length,0);assert.equal(f.submissions(),0);}finally{await f.cleanup();}});
 
 test('AI重拆改变原句台词或拒绝锁定边界，原分镜及后续保持原样',async()=>{
  const f=await fixture();try{f.project.shots[0].promptTemplate='{{ref:hero-id}} 主角：“不能改这句。”';const original=structuredClone(f.project.shots);for(const badBoundary of [true,false]){

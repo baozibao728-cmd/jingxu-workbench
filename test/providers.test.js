@@ -147,7 +147,7 @@ test('DeepSeek 用 JSON 输出模式，拒绝截断结果', async () => {
   assert.deepEqual(await text.generateJson({ instructions: '提取人物。示例 JSON: {"characters":[]}', input: '剧本内容' }), { characters: [] });
   assert.equal(mock.calls[0].url, 'https://api.deepseek.com/chat/completions');
   assert.deepEqual(JSON.parse(mock.calls[0].body).response_format, { type: 'json_object' });
-  await assert.rejects(text.generateJson({ instructions: '提取人物', input: '剧本' }), /未正常完成/);
+  await assert.rejects(text.generateJson({ instructions: '提取人物', input: '剧本' }), error=>error.code==='TEXT_OUTPUT_TRUNCATED'&&/输出长度限制/.test(error.message));
 });
 
 test('成品 CDN 下载不携带服务 Key，下载完才写入最终文件', async () => {
