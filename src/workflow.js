@@ -12,7 +12,8 @@ import { resolvePrompts, renderStoryboardFormat } from './prompt-settings.js';
 import { splitScript } from './script-chunks.js';
 import { TaskPool, validateConcurrency } from './concurrency.js';
 import { createProvider, referenceTag } from './custom-providers.js';
-import { boundaryState, dialogueLines, markFollowing, renumberSegments, continuityHash } from './continuity.js';
+import { boundaryState, dialogueLines, markFollowing, renumberSegments } from './continuity.js';
+import { startStoryboardReparse, reparseSummary } from './storyboard-reparse.js';
 
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
@@ -71,6 +72,7 @@ export class Workflow {
   }
   view(project) {
     const copy = structuredClone(project);
+    if (copy.storyboardReparse) copy.storyboardReparse = reparseSummary(project.storyboardReparse);
     copy.videoProfile = this.videoProfile();
     copy.resolution = this.resolution(project);
     copy.skipReview = project.skipReview === true;
@@ -280,13 +282,14 @@ export class Workflow {
     }
     return [...byId.values()].map(shot => ({ title:shot.title, prompt:displayPrompt(shot.promptTemplate,project.assets) }));
   }
-  async generateStoryboards(project) {
+  async reparseStoryboards(id, input = {}) { return startStoryboardReparse(this, id, input); }
+  async generateStoryboards(project, { checkpoint = () => this.store.save(project), promptRules = this.getPrompts() } = {}) {
     const profile = this.videoProfile(), duration = project.clipDuration, maxReferences = Math.min(9, this.videoProfile().maxReference);
     validateVideoSettings(profile, duration, this.resolution(project));
     project.chunks ||= splitScript(project.script);
-    project.storyboardPrompts ||= this.getPrompts();
+    project.storyboardPrompts ||= promptRules;
     // Adopt the currently selected output format for new batches; completed rows stay intact.
-    project.storyboardPrompts.storyboardFormat = this.getPrompts().storyboardFormat;
+    project.storyboardPrompts.storyboardFormat = promptRules.storyboardFormat;
     const rules = project.storyboardPrompts;
     const selected = project.assets.filter(asset => asset.selected !== false && asset.image);
     const manifest = selected.map(asset => ({ key: asset.sourceKey || asset.id, name: asset.name, kind: asset.kind, description: asset.description, imageLayout: asset.image?.layout }));
@@ -296,7 +299,7 @@ export class Workflow {
       if (chunk.referenceOnly) { chunk.storyboardState = 'skipped'; continue; }
       if (chunk.storyboardState === 'completed') continue;
       project.preparation.phase = 'storyboards'; project.preparation.stage = `生成分镜 ${chunk.index} / ${project.chunks.length} · ${chunk.title}`;
-      await this.store.save(project);
+      await checkpoint();
       const result = await this.factories.text(this.config().deepseek).generateJson({
         instructions: `你是短剧分镜导演，只处理当前段落，前文仅供连续性参考，不重复拍摄。用户未选择的资产不能引用，可在提示词中用文字描述；所选素材清单中有的重要资产必须明确引用。
 【分镜拆解规则】\n${rules.breakdown}\n【分镜输出要求】\n${renderStoryboardFormat(rules.storyboardFormat, { duration, aspectRatio: project.aspectRatio })}
@@ -323,7 +326,7 @@ export class Workflow {
       });
       project.shots.push(...shots); chunk.storyboardState = 'completed'; project.revision++;
       this.store.log(project, `${chunk.title}：已列出${shots.length}条分镜，累计${project.shots.length}条。`);
-      await this.store.save(project);
+      await checkpoint();
     }
   }
   errorText(error) {
@@ -496,39 +499,7 @@ export class Workflow {
     shot.continuityReview={state:'confirmed',at:now()};project.revision++;
     this.store.log(project,`${shot.title} 衔接已由你人工核对确认`);await this.store.save(project);return this.view(project);
   }
-  async alignFollowing(id){
-    const project=this.store.get(id);this.assertEditable(project);
-    if(!this.config().deepseek.apiKey)fail('请先配置文本服务');
-    const targets=project.shots.filter(s=>s.continuityReview?.state==='required');if(!targets.length)fail('当前没有需要对齐的分镜');
-    if(targets.some(s=>s.job?.state==='unknown'||(s.job?.taskId&&s.job.state!=='completed'&&!s.video)))fail('后续分镜仍有已提交的视频任务，请先查询完成再对齐');
-    const originalHash=continuityHash(project);
-    project.preparation={state:'running',phase:'alignment',stage:'AI对齐后续分镜',completed:0,total:targets.length};await this.store.save(project);
-    await this.launch(`align:${id}`,async()=>{
-      try{
-        const working=structuredClone(project.shots),assets=project.assets.filter(a=>a.image),keys=new Map(assets.flatMap(a=>[[a.sourceKey||a.id,a.id],[a.id,a.id]]));const rules=this.getPrompts();
-        for(let index=0;index<working.length;index++){
-          const shot=working[index];if(shot.continuityReview?.state!=='required')continue;if(this.stopping)return;
-          const previous=working[index-1],next=working[index+1],end=boundaryState(shot,'end');
-          const start=previous?boundaryState(previous,'end'):boundaryState(shot,'start');
-          project.preparation.stage=`对齐分镜 ${index+1} / ${working.length}`;await this.store.save(project);
-          const result=await this.factories.text(this.config().deepseek).generateJson({instructions:`你是短剧连续性校对。只修复当前这一条与上一条的接缝：开场必须承接locked.start，收尾必须保持locked.end。不增删对白、不改变剧情、不扩写下一条，不改变当前条数与时长${shot.duration}秒。统一人物位置、朝向、道具持有、情绪、机位、段落编号，既定人物声音、场景与调色逐字沿用。输出JSON {"duration":${shot.duration},"promptTemplate":"完整修复后的提示词，素材使用{{ref:key}}","boundaryConfirmation":{"start":"逐字复制locked.start","end":"逐字复制locked.end"}}。${renderStoryboardFormat(rules.storyboardFormat,{duration:shot.duration,aspectRatio:project.aspectRatio})}`,
-            input:JSON.stringify({segmentNumber:index+1,locked:{start,end},current:displayPrompt(shot.promptTemplate,project.assets),previous:previous?displayPrompt(previous.promptTemplate,project.assets):null,next:next?displayPrompt(next.promptTemplate,project.assets):null,assets:assets.map(a=>({key:a.sourceKey||a.id,name:a.name,kind:a.kind}))}),maxTokens:16000});
-          if(Number(result.duration)!==shot.duration||typeof result.promptTemplate!=='string'||result.promptTemplate.length>16000||result.boundaryConfirmation?.start!==start||result.boundaryConfirmation?.end!==end)throw Error('AI对齐没有保持时长或边界，原分镜全部保留');
-          const template=result.promptTemplate.replace(/\{\{ref:([^}]+)\}\}/g,(_,key)=>{if(!keys.has(key))throw Error('AI对齐使用了未知图片，原分镜保留');return `{{ref:${keys.get(key)}}}`;});
-          const refs=[...new Set([...template.matchAll(/\{\{ref:([^}]+)\}\}/g)].map(m=>m[1]))];if(!refs.length||refs.length>Math.min(9,this.videoProfile().maxReference)||/\{\{ref:/.test(template.replace(/\{\{ref:[^}]+\}\}/g,'')))throw Error('AI对齐引用不完整，原分镜保留');
-          const oldDialogue=dialogueLines(shot.promptTemplate);if(oldDialogue.length&&JSON.stringify(oldDialogue)!==JSON.stringify(dialogueLines(template)))throw Error('AI对齐改变了台词，原分镜全部保留');
-          shot.promptTemplate=template;shot.assetIds=refs;shot.continuity={start,end};shot.continuityReview={state:'aligned',at:now()};
-          project.preparation.completed++;await this.store.save(project);
-        }
-        if(continuityHash(project)!==originalHash)throw Error('对齐期间分镜已变化，请重新开始');
-        (project.storyboardHistory||=[]).push({at:now(),reason:'对齐后续分镜',originals:structuredClone(project.shots)});
-        project.shots=working;renumberSegments(project);project.revision++;
-        project.preparation={state:'completed',phase:'review',stage:'后续衔接已对齐，请检查分镜再生成视频',completed:targets.length,total:targets.length};
-        this.store.log(project,`已顺序对齐${targets.length}条后续分镜，旧记录与成片保留，没有自动生成视频。`);
-      }catch(error){project.preparation.state='failed';project.preparation.error=this.errorText(error);this.store.log(project,project.preparation.error,'error');}
-      await this.store.save(project);
-    });return this.view(project);
-  }
+  async alignFollowing(){ fail('一键对齐已移除，请使用全部重新解析分镜；此操作尚未开始解析。',410); }
   review(id, shotIds) {
     const project = this.store.get(id);
     if (jobActive(project.preparation)) fail('请先完成资产与分镜准备', 409);
@@ -538,7 +509,7 @@ export class Workflow {
     if (!ids.length) fail('请至少选择一条分镜');
     const shots = ids.map(shotId => {
       const shot = this.shot(project, shotId);
-      if(shot.continuityReview?.state==='required')fail(`${shot.title} 需要先对齐后续衔接，或人工核对后确认衔接`);
+      if(shot.continuityReview?.state==='required')fail(`${shot.title} 需要先人工核对衔接，或全部重新解析分镜`);
       if (jobActive(shot.job) || jobActive(shot.rebuildJob)) fail(`${shot.title} 已在处理中`, 409);
       if (shot.job?.state === 'unknown') fail(`${shot.title} 上次提交结果未知，请先核对任务`);
       validateVideoSettings(this.videoProfile(), shot.duration, this.resolution(project));
@@ -699,6 +670,10 @@ export class Workflow {
     try { this.uploadCache = JSON.parse(await readFile(join(this.store.root, 'upload-cache.json'), 'utf8')); }
     catch (error) { if (error.code !== 'ENOENT') throw error; this.uploadCache = {}; }
     for (const project of this.store.projects.values()) {
+      if (project.storyboardReparse?.state === 'running') {
+        project.storyboardReparse.state = 'failed';
+        project.storyboardReparse.error = '后台重启中断了全部解析，可继续；旧分镜保留。';
+      }
       if (jobActive(project.mergeJob)) project.mergeJob = { state: 'failed', error: '后台重启中断了合成，原始片段已保留，可重新合成。' };
       if (jobActive(project.preparation)) {
         project.preparation = { ...project.preparation, state: 'failed', error: '后台已重启，可点击继续准备。已有图片和远端任务会保留。' };

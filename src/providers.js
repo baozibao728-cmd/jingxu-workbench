@@ -34,10 +34,11 @@ export class DeepSeekProvider {
       },
     });
     const choice = result.choices?.[0];
+    if (choice?.finish_reason === 'length') throw Object.assign(new Error('DeepSeek 输出未正常完成：达到输出长度限制，结果已截断。本轮未保存，旧分镜保留；可用全部重新解析分镜分段重试。'), {code:'TEXT_OUTPUT_TRUNCATED'});
     if (choice?.finish_reason !== 'stop') throw new Error('DeepSeek 输出未正常完成，不能作为完整剧本或分镜保存');
     const content = choice.message?.content;
     if (typeof content !== 'string' || !content.trim()) throw new Error('DeepSeek 返回了空内容');
-    const data = JSON.parse(content);
+    let data;try{data=JSON.parse(content);}catch{throw Error('文字服务返回的JSON不完整，本轮未保存，旧分镜保留；请重新解析。');}
     if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('DeepSeek 未返回 JSON 对象');
     return data;
   }

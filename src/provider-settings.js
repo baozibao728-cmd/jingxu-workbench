@@ -1,3 +1,4 @@
+import {providerModels,normalizeModels} from '../public/model-options.js';
 import {readFile,writeFile,mkdir,rename} from 'node:fs/promises';
 import {dirname} from 'node:path';
 import {randomUUID} from 'node:crypto';
@@ -17,7 +18,7 @@ export const customExample={
  referenceMode:'data-url',referenceTag:'@图片{index}',referenceItem:'string',
 };
 export function safeProvider(config){
- const {apiKey,...safe}=config;return {...safe,configured:!!apiKey};
+ const {apiKey,...safe}=config;return {...safe,models:providerModels(config),configured:!!apiKey};
 }
 export function validateProvider(service,input){
  const protocol=input.protocol||protocolDefaults[service];
@@ -47,8 +48,8 @@ export function validateProvider(service,input){
 }
 
 export class ProviderSettings{
- constructor(path,initial){this.path=path;this.writes=Promise.resolve();this.profiles={};this.selected={};for(const service of Object.keys(protocolDefaults)){const id=`${service}-legacy`;this.profiles[id]={...initial[service],id,name:providerCatalog[service][0].label,service,protocol:protocolDefaults[service],timeoutMs:120000};this.selected[service]=id;}}
- async init(){try{const saved=JSON.parse(await readFile(this.path,'utf8'));if(!saved.profiles||!saved.selected)throw Error('厂商配置文件不完整');this.profiles=saved.profiles;this.selected=saved.selected;}catch(e){if(e.code!=='ENOENT')throw e;}}
+ constructor(path,initial){this.path=path;this.writes=Promise.resolve();this.profiles={};this.selected={};for(const service of Object.keys(protocolDefaults)){const id=`${service}-legacy`;this.profiles[id]={...initial[service],id,name:providerCatalog[service][0].label,service,protocol:protocolDefaults[service],timeoutMs:120000};this.profiles[id].models=providerModels(this.profiles[id]);this.selected[service]=id;}}
+ async init(){try{const saved=JSON.parse(await readFile(this.path,'utf8'));if(!saved.profiles||!saved.selected)throw Error('厂商配置文件不完整');this.profiles=saved.profiles;this.selected=saved.selected;for(const profile of Object.values(this.profiles))profile.models=providerModels(profile);}catch(e){if(e.code!=='ENOENT')throw e;}}
  active(service){return this.profiles[this.selected[service]];}
  config(){return Object.fromEntries(Object.keys(protocolDefaults).map(s=>[s,this.active(s)]));}
  byId(id){const p=this.profiles[id];if(!p)throw Error('原任务的厂商配置已不存在');return p;}
@@ -61,12 +62,13 @@ export class ProviderSettings{
     if(value.profileId!=='new'&&(!profiles[id]||profiles[id].service!==service))throw Error('厂商配置不存在或用途不匹配');
     const old=profiles[id]||{service,timeoutMs:120000,apiKey:''};
     const next={...old,id,service};
-    for(const key of ['name','baseUrl','model','protocol','submitPath','timeoutMs','adapter','capabilities','imageSize','authHeader','authPrefix'])if(value[key]!==undefined)next[key]=value[key];
+    for(const key of ['name','baseUrl','model','protocol','submitPath','timeoutMs','adapter','capabilities','imageSize','authHeader','authPrefix','models'])if(value[key]!==undefined)next[key]=value[key];
     if(typeof value.apiKey==='string'&&value.apiKey.trim())next.apiKey=value.apiKey.trim();
     for(const field of ['name','baseUrl','model','protocol','submitPath','authHeader'])if(next[field]!==undefined){if(typeof next[field]!=='string'||/[\r\n]/.test(next[field]))throw Error('配置字段不能包含换行');next[field]=next[field].trim();}
+    next.models=normalizeModels(next.models??providerModels(next),next.model);
     next.name ||= '自定义厂商';next.authHeader ||= 'Authorization';validateProvider(service,next);
     // Keep connection revisions for already paid tasks, including their original key.
-    const comparable=p=>JSON.stringify(Object.fromEntries(Object.entries({...p,authHeader:p.authHeader||'Authorization',authPrefix:p.authPrefix??'Bearer '}).filter(([k])=>!['id','archived'].includes(k)).sort(([a],[b])=>a.localeCompare(b))));
+    const comparable=p=>JSON.stringify(Object.fromEntries(Object.entries({...p,authHeader:p.authHeader||'Authorization',authPrefix:p.authPrefix??'Bearer '}).filter(([k])=>!['id','archived','models','name'].includes(k)).sort(([a],[b])=>a.localeCompare(b))));
     let nextId=id;
     if(profiles[id]&&comparable(profiles[id])!==comparable(next)){nextId=`${service}-${randomUUID()}`;profiles[id].archived=true;}
     next.id=nextId;delete next.archived;profiles[nextId]=next;selected[service]=nextId;

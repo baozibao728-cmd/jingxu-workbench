@@ -120,6 +120,7 @@ export async function createApplication({ root = join(applicationRoot, 'data', '
           if (segments.length === 3 && request.method === 'PATCH') return send(response, 200, await workflow.updateProject(id, await body(request)));
           if (segments[3] === 'prepare' && request.method === 'POST') return send(response, 202, await workflow.startPreparation(id));
           if (segments[3] === 'generate-assets' && request.method === 'POST') return send(response, 202, await workflow.startAssetGeneration(id, (await body(request)).assetIds));
+          if (segments[3] === 'reparse-storyboards' && request.method === 'POST') return send(response, 202, await workflow.reparseStoryboards(id, await body(request)));
           if (segments[3] === 'merge' && request.method === 'POST') return send(response, 202, await workflow.startMerge(id));
           if (segments[3] === 'align-following' && request.method === 'POST') return send(response,202,await workflow.alignFollowing(id));
           if (segments[3] === 'duplicate' && request.method === 'POST') {
@@ -166,7 +167,7 @@ export async function createApplication({ root = join(applicationRoot, 'data', '
       if (segments[0] === 'media' && segments.length === 3 && ['GET', 'HEAD'].includes(request.method)) return await streamFile(request, response, store.media(segments[1], segments[2]));
       if (!['GET', 'HEAD'].includes(request.method)) return send(response, 405, { error: '不支持的请求方法' });
       const filename = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
-      if (!['index.html', 'app.js', 'settings-ui.js', 'image-viewer.js', 'mentions.js', 'style.css'].includes(filename)) return send(response, 404, { error: '页面不存在' });
+      if (!['index.html', 'app.js', 'model-options.js', 'settings-ui.js', 'image-viewer.js', 'mentions.js', 'style.css'].includes(filename)) return send(response, 404, { error: '页面不存在' });
       return await streamFile(request, response, join(publicRoot, filename));
     } catch (error) {
       if (!response.headersSent) send(response, error.status || (error.code === 'ENOENT' ? 404 : 400), { error: error.code === 'ENOENT' ? '文件不存在' : workflow.errorText(error) });
