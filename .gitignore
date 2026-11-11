@@ -1,0 +1,13 @@
+.env
+.env.*
+!.env.example
+data/
+node_modules/
+outputs/
+.DS_Store
+
+# Local production records are excluded from public source.
+docs/真实联调记录.md
+docs/断了六条货路_待确认资产清单.md
+
+outputs/
