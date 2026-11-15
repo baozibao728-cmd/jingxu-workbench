@@ -16,9 +16,15 @@ jobs:
         run: |
           node --input-type=module -e 'import fs from "node:fs"; if("v"+JSON.parse(fs.readFileSync("package.json")).version!==process.env.GITHUB_REF_NAME)process.exit(1)'
           npm test
-      - name: Build public update
-        run: node scripts/build-update.mjs
+      - name: Build public update and packages
+        run: python3 scripts/package-public.py
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" outputs/jingxu-update.json --title "$GITHUB_REF_NAME" --generate-notes
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          gh release create "$GITHUB_REF_NAME" \
+            outputs/jingxu-update.json \
+            "outputs/镜序工作台_更新包_${VERSION}.zip" \
+            outputs/镜序工作台_GitHub源码包.zip \
+            --title "镜序工作台 $GITHUB_REF_NAME" --generate-notes
