@@ -97,12 +97,12 @@ void nightMain(){
       vec3 n=vec3(d,sqrt(1.-l2));
       vec2 toS=uSun.xy-B.xy;vec3 L=normalize(vec3(toS,length(toS)*.3));
       float ndl=dot(n,L);
-      float lon=atan(n.x,n.z)+uTime*(.04+BC.w*.06),lat=asin(clamp(n.y,-1.,1.));
+      float lon=atan(n.x,n.z)+uTime*(.09+BC.w*.11),lat=asin(clamp(n.y,-1.,1.));
       vec3 c=BC.rgb,sf;
       if(k<.5){sf=c*(.55+.6*fbm4(vec2(lon,lat)*3.+BC.w*10.));}
       else if(k<1.5){float land=smoothstep(.5,.56,fbm4(vec2(lon,lat)*2.2+BC.w*7.));
         sf=mix(vec3(.04,.18,.48),vec3(.22,.4,.18),land);
-        float cl=smoothstep(.55,.75,fbm4(vec2(lon*1.4+uTime*.03,lat*3.)*2.+3.));sf=mix(sf,vec3(.95),cl*.85);}
+        float cl=smoothstep(.55,.75,fbm4(vec2(lon*1.4+uTime*.05,lat*3.)*2.+3.));sf=mix(sf,vec3(.95),cl*.85);}
       else{float bz=fbm4(vec2(lon*.8,lat*6.)+BC.w*5.);sf=c*(.62+.28*sin(lat*16.+bz*6.)+.3*bz);}
       vec3 pc=sf*(.02+1.25*max(ndl,0.));
       if(k>.5&&k<1.5||k>2.5&&k<3.5)pc+=vec3(.35,.62,1.)*pow(1.-n.z,4.)*smoothstep(-.2,.45,ndl)*.9;
@@ -181,12 +181,12 @@ void dayMain(){
       vec3 n=vec3(d,sqrt(1.-l2));
       vec2 toS=uSun.xy-B.xy;vec3 L=normalize(vec3(toS,length(toS)*.35));
       float ndl=dot(n,L);
-      float lon=atan(n.x,n.z)+uTime*(.04+BC.w*.06),lat=asin(clamp(n.y,-1.,1.));
+      float lon=atan(n.x,n.z)+uTime*(.09+BC.w*.11),lat=asin(clamp(n.y,-1.,1.));
       vec3 c=BC.rgb,sf;
       if(k<.5){sf=c*(.8+.35*fbm4(vec2(lon,lat)*3.+BC.w*10.));}
       else if(k<1.5){float land=smoothstep(.5,.56,fbm4(vec2(lon,lat)*2.2+BC.w*7.));
         sf=mix(vec3(.5,.66,.8),vec3(.66,.72,.52),land);
-        float cl=smoothstep(.55,.75,fbm4(vec2(lon*1.4+uTime*.03,lat*3.)*2.+3.));sf=mix(sf,vec3(.98,.97,.95),cl*.8);}
+        float cl=smoothstep(.55,.75,fbm4(vec2(lon*1.4+uTime*.05,lat*3.)*2.+3.));sf=mix(sf,vec3(.98,.97,.95),cl*.8);}
       else{float bz=fbm4(vec2(lon*.8,lat*6.)+BC.w*5.);sf=c*(.8+.16*sin(lat*16.+bz*6.)+.18*bz);}
       float lit=smoothstep(-.12,.28,ndl);
       vec3 shade=sf*vec3(.6,.6,.68);
