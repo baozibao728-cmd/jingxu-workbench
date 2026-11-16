@@ -5,10 +5,11 @@ import {randomUUID} from 'node:crypto';
 import {ApiClient} from './http.js';
 
 export const providerCatalog={
- deepseek:[{id:'deepseek',label:'DeepSeek',protocol:'openai-chat',baseUrl:'https://api.deepseek.com',submitPath:'/chat/completions'},{id:'openai',label:'OpenAI 兼容',protocol:'openai-chat',baseUrl:'',submitPath:'/v1/chat/completions'},{id:'custom',label:'自定义厂商',protocol:'json',baseUrl:''}],
+ deepseek:[{id:'deepseek',label:'DeepSeek',icon:'deepseek',protocol:'openai-chat',baseUrl:'https://api.deepseek.com',submitPath:'/chat/completions'},{id:'gemini',label:'Gemini',icon:'gemini',protocol:'openai-chat',baseUrl:'https://generativelanguage.googleapis.com',submitPath:'/v1beta/openai/chat/completions'},{id:'claude',label:'Claude',icon:'claude',protocol:'openai-chat',baseUrl:'https://api.anthropic.com',submitPath:'/v1/chat/completions'},{id:'gpt',label:'GPT',icon:'gpt',protocol:'openai-chat',baseUrl:'https://api.openai.com',submitPath:'/v1/chat/completions'},{id:'openai',label:'OpenAI 兼容（中转站）',protocol:'openai-chat',baseUrl:'',submitPath:'/v1/chat/completions'},{id:'custom',label:'自定义厂商',protocol:'json',baseUrl:''}],
  grsai:[{id:'grsai',label:'Grsai 中转站',protocol:'grsai',baseUrl:'https://grsaiapi.com'},{id:'openai',label:'OpenAI Images 兼容',protocol:'openai-images',baseUrl:'',submitPath:'/v1/images/generations'},{id:'custom',label:'自定义厂商',protocol:'json',baseUrl:''}],
  fydmai:[{id:'fydmai',label:'菲阳动漫',protocol:'fydmai',baseUrl:'https://fydmai.com'},{id:'yingman',label:'萤漫 OpenAI兼容视频',protocol:'openai-video',baseUrl:'https://yingman.xlapis.com',submitPath:'/v1/videos',model:'seedance-2.5-cc',models:[{id:'seedance-2.5-cc',label:'Seedance 2.5'},{id:'seedance-2.5-flash-cc',label:'Seedance 2.5 Flash'}],capabilities:{minDuration:4,maxDuration:30,defaultDuration:30,resolutions:['720p'],defaultResolution:'720p',maxReference:10}},{id:'custom',label:'自定义厂商 / 兼容视频接口',protocol:'json',baseUrl:''}],
 };
+export const providerIcons=['','deepseek','gemini','claude','gpt','letter'];
 export const protocolDefaults={deepseek:'openai-chat',grsai:'grsai',fydmai:'fydmai'};
 export const customExample={
  submitPath:'/v1/tasks',queryPath:'/v1/tasks/{id}',uploadPath:'',uploadField:'file',uploadResultPath:'assetId',
@@ -25,6 +26,7 @@ export function validateProvider(service,input){
  const allowed={deepseek:['openai-chat','json'],grsai:['grsai','openai-images','json'],fydmai:['fydmai','openai-video','json']};
  if(!allowed[service]?.includes(protocol))throw Error('请选择该用途支持的接口协议');
  if(!input.baseUrl||!input.model)throw Error('请填写API基础地址和模型ID');
+ if(input.icon!==undefined&&!providerIcons.includes(input.icon))throw Error('图标选项无效');
  new ApiClient(input);
  if(input.authHeader&&!/^[A-Za-z0-9-]+$/.test(input.authHeader))throw Error('认证头名称只能包含英文、数字和短横线');
  if(input.authPrefix!==undefined&&(typeof input.authPrefix!=='string'||/[\r\n]/.test(input.authPrefix)))throw Error('认证前缀不能包含换行');
@@ -62,13 +64,13 @@ export class ProviderSettings{
     if(value.profileId!=='new'&&(!profiles[id]||profiles[id].service!==service))throw Error('厂商配置不存在或用途不匹配');
     const old=profiles[id]||{service,timeoutMs:120000,apiKey:''};
     const next={...old,id,service};
-    for(const key of ['name','baseUrl','model','protocol','submitPath','timeoutMs','adapter','capabilities','imageSize','authHeader','authPrefix','models'])if(value[key]!==undefined)next[key]=value[key];
+    for(const key of ['name','baseUrl','model','protocol','submitPath','timeoutMs','adapter','capabilities','imageSize','authHeader','authPrefix','models','icon'])if(value[key]!==undefined)next[key]=value[key];
     if(typeof value.apiKey==='string'&&value.apiKey.trim())next.apiKey=value.apiKey.trim();
     for(const field of ['name','baseUrl','model','protocol','submitPath','authHeader'])if(next[field]!==undefined){if(typeof next[field]!=='string'||/[\r\n]/.test(next[field]))throw Error('配置字段不能包含换行');next[field]=next[field].trim();}
     next.models=normalizeModels(next.models??providerModels(next),next.model);
     next.name ||= '自定义厂商';next.authHeader ||= 'Authorization';validateProvider(service,next);
     // Keep connection revisions for already paid tasks, including their original key.
-    const comparable=p=>JSON.stringify(Object.fromEntries(Object.entries({...p,authHeader:p.authHeader||'Authorization',authPrefix:p.authPrefix??'Bearer '}).filter(([k])=>!['id','archived','models','name'].includes(k)).sort(([a],[b])=>a.localeCompare(b))));
+    const comparable=p=>JSON.stringify(Object.fromEntries(Object.entries({...p,authHeader:p.authHeader||'Authorization',authPrefix:p.authPrefix??'Bearer '}).filter(([k])=>!['id','archived','models','name','icon'].includes(k)).sort(([a],[b])=>a.localeCompare(b))));
     let nextId=id;
     if(profiles[id]&&comparable(profiles[id])!==comparable(next)){nextId=`${service}-${randomUUID()}`;profiles[id].archived=true;}
     next.id=nextId;delete next.archived;profiles[nextId]=next;selected[service]=nextId;

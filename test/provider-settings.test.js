@@ -14,3 +14,11 @@ test('多模型列表独立保存并可来回选择；编辑列表不改变当�
 });
 
 test('模型列表支持每行ID与自定义显示名称，去重并保留当前未知型号',async()=>{const {normalizeModels}=await import('../public/model-options.js');assert.deepEqual(normalizeModels('first | 第一个\nsecond\nfirst | 重复','unlisted'),[{id:'unlisted',label:'unlisted'},{id:'first',label:'第一个'},{id:'second',label:'second'}]);assert.throws(()=>normalizeModels(['bad\nvalue']),/模型ID/);assert.throws(()=>normalizeModels(Array.from({length:101},(_,i)=>'m'+i)),/100/);});
+
+test('厂商图标可保存并回传给界面；只改图标不新建连接编号，无效图标被拒绝；文本预设含四个常用厂商',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'jingxu-icon-'));try{const s=new ProviderSettings(join(root,'providers.json'),initial());await s.init();const id=s.config().deepseek.id;
+ await s.save({deepseek:{icon:'claude',apiKey:''}});assert.equal(s.config().deepseek.id,id);assert.equal(s.config().deepseek.apiKey,'secret-deepseek');assert.equal(s.view().profiles.find(p=>p.id===id).icon,'claude');
+ await s.save({deepseek:{icon:''}});assert.equal(s.config().deepseek.icon,'');await assert.rejects(s.save({deepseek:{icon:'<svg>'}}),/图标/);
+ assert.deepEqual(s.view().catalog.deepseek.filter(x=>x.icon).map(x=>x.id),['deepseek','gemini','claude','gpt']);
+ }finally{await rm(root,{recursive:true,force:true});}
+});
