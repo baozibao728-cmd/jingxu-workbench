@@ -249,7 +249,7 @@ input[type=checkbox]:active{transform:scale(.88)}
 
 
 /* ===== 布局二版：去掉顶栏，只留可收起的侧栏和主区；配色收敛成中性色，强调色只用于少量提示 ===== */
-:root{--side:236px;--side-rail:68px}
+:root{--side:272px;--side-rail:68px}
 .app-shell{grid-template-columns:var(--side) minmax(0,1fr);transition:grid-template-columns .32s var(--ease-out)}
 html[data-sidebar=collapsed] .app-shell{grid-template-columns:var(--side-rail) minmax(0,1fr)}
 html[data-sidebar] .sidebar{width:var(--side);padding:18px 12px 14px;gap:0;border-right:1px solid var(--line);box-shadow:none;transition:width .32s var(--ease-out),padding .32s var(--ease-out),background-color .4s}
@@ -346,3 +346,10 @@ html[data-sidebar=collapsed] .theme-switch button{flex:0 0 26px;width:26px;heigh
 .asset-card.is-pickable *{cursor:pointer}
 .asset-pick-toggle.active,.asset-pick-toggle.active:hover:not(:disabled){background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent-ink)}
 .asset-choice input{width:18px;height:18px}
+
+/* 侧栏加宽后，展开状态的间距和字号跟着放开一点 */
+html[data-sidebar=open] .sidebar{padding:20px 14px 16px}
+html[data-sidebar=open] .side-item{font-size:14px;padding:10px 12px;gap:12px}
+html[data-sidebar=open] .sidebar-bottom .side-item{font-size:13.5px;padding:9px 12px}
+html[data-sidebar=open] .project-link{padding:8px 10px;gap:11px}
+html[data-sidebar=open] .project-title{font-size:13px}
