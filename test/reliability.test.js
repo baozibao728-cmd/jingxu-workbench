@@ -45,14 +45,14 @@ test('连续三次都不合格才报失败，旧分镜保留',async()=>{
  }finally{await f.cleanup();}
 });
 
-test('已有资产图时修改剧本：不用另建项目，重新解析分镜即可，资产图原样保留且不提交生图',async()=>{
- const f=await fixture('场景一：房间\n主角：“旧台词。”\n',input=>shot(input));
+test('全部重新解析后资产清单仍算已完成：不会再要求拆解资产，也不会提交生图',async()=>{
+ const f=await fixture('场景一：房间\n主角：“第一句。”\n场景二：走廊\n主角：“第二句。”\n',input=>shot(input));
  try{const image=structuredClone(f.project.assets[0].image);
-  await f.workflow.updateProject(f.project.id,{script:'场景一：房间\n主角：“新台词。”\n'});assert.equal(f.project.sourceChanged,true);
-  assert.throws(()=>f.workflow.review(f.project.id,['old']),/重新解析分镜/);
   await f.workflow.reparseStoryboards(f.project.id,{duration:30});await f.settle();
-  assert.equal(f.project.storyboardReparse.state,'completed');assert.equal(f.project.sourceChanged,undefined);
-  assert.match(f.project.shots[0].promptTemplate,/新台词/);assert.deepEqual(f.project.assets[0].image,image);assert.equal(f.images(),0);
+  assert.equal(f.project.storyboardReparse.state,'completed');assert.ok(f.project.chunks.every(c=>c.analysisState==='completed'));
+  const before=f.calls.length;await assert.rejects(f.workflow.startPreparation(f.project.id),/资产清单已经列出/);
+  assert.equal(f.calls.length,before);assert.equal(f.project.assets.length,1);assert.deepEqual(f.project.assets[0].image,image);assert.equal(f.images(),0);
+  f.project.chunks.forEach(c=>c.analysisState='idle');await f.workflow.recover();assert.ok(f.project.chunks.every(c=>c.analysisState==='completed'));
  }finally{await f.cleanup();}
 });
 

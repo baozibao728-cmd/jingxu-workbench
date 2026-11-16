@@ -230,10 +230,9 @@ export class Workflow {
     }
     project.revision++; await this.store.save(project); return this.view(project);
   }
-  assertEditable(project, { allowSourceChanged = false } = {}) {
+  assertEditable(project) {
     if (jobActive(project.preparation) || project.assets.some(asset => jobActive(asset.job)) || project.shots.some(shot => jobActive(shot.job) || jobActive(shot.rebuildJob))) fail('项目有任务正在处理中，请完成后再操作', 409);
-    // 剧本改动后资产图保留：允许重新解析分镜和手动换图，其余操作等分镜按新剧本解析完再做。
-    if (project.sourceChanged && !allowSourceChanged) fail('剧本或规则已更改，请先点“按新剧本重新解析分镜”；资产图会保留', 409);
+    if (project.sourceChanged) fail('剧本或规则已更改，请先保存为新项目再重新提取，避免覆盖已有素材', 409);
   }
   async checkAutomaticStart(project) {
     this.validateSettings(project);
@@ -642,7 +641,7 @@ export class Workflow {
     const project = this.store.get(id), videoConfig = this.videoConfigForProject(project), profile = this.videoProfile(project);
     if (jobActive(project.preparation)) fail('请先完成资产与分镜准备', 409);
     if (project.chunks?.some(chunk => !chunk.referenceOnly && chunk.storyboardState !== 'completed')) fail('全部分镜尚未列出，请先继续准备，完成后再确认视频', 409);
-    if (project.sourceChanged) fail('剧本已修改，请先点“按新剧本重新解析分镜”，再生成视频；资产图会保留', 409);
+    if (project.sourceChanged) fail('剧本已修改，现有分镜尚未重新准备，不能直接生成视频', 409);
     const ids = [...new Set(array(shotIds))];
     if (!ids.length) fail('请至少选择一条分镜');
     const shots = ids.map(shotId => {
@@ -856,6 +855,8 @@ export class Workflow {
         project.storyboardReparse.state = 'failed';
         project.storyboardReparse.error = '后台重启中断了全部解析，可继续；旧分镜保留。';
       }
+      // 旧版本全部重解析后段落被标成“未分析”，会让界面再次要求拆解资产；已有分镜和资产的项目在此修正。
+      if (project.storyboardReparse?.state === 'completed' && project.shots.length && project.assets.length) for (const chunk of project.chunks || []) if (chunk.analysisState !== 'completed') chunk.analysisState = 'completed';
       if (jobActive(project.mergeJob)) project.mergeJob = { state: 'failed', error: '后台重启中断了合成，原始片段已保留，可重新合成。' };
       if (jobActive(project.preparation)) {
         project.preparation = { ...project.preparation, state: 'failed', error: '后台已重启，可点击继续准备。已有图片和远端任务会保留。' };
