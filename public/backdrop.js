@@ -454,7 +454,10 @@ void main(){if(uDay>.5)dayMain();else nightMain();}
     g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,W,H);
     if(S.kind==='gl'){SPACE.draw(dt,clock,m.sx,m.sy,m.x,m.y,drawSystem(calm?0:dt),S.day);if(S.dust)drawDust(S.dust,dt)}else S.kind==='dark'?drawDark(dt):drawLight(dt);
   }
+  // 工作台改动：背景限制在约 30 帧，页面滚动时暂停重画。背景每动一帧，上面所有毛玻璃都要重新模糊一遍，滚动时会抢显卡。
+  let hold=0;addEventListener('scroll',()=>{hold=performance.now()+180},{capture:true,passive:true});
   function frame(now){
+    if(!calm&&!document.hidden&&(now<hold||(last&&now-last<31))){raf=requestAnimationFrame(frame);return}
     const dt=Math.min((now-(last||now))/1000,.05);last=now;if(!calm)clock+=dt;
     render(dt);
     raf=0;if(!calm&&!document.hidden)raf=requestAnimationFrame(frame);
