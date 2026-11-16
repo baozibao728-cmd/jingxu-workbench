@@ -484,6 +484,6 @@ void main(){if(uDay>.5)dayMain();else nightMain();}
     }
     sync();
   }).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
-  build();sync();
+  build();render(0);sync(); // 先同步画一帧，页面在后台打开时也不会是空背景
 })();
 })();
