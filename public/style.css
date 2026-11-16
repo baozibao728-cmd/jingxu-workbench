@@ -399,3 +399,10 @@ html[data-sidebar=open] .side-foot{padding:12px 8px 0}
 .provider-icon-picker button[aria-pressed=true]{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink);color:var(--ink)}
 
 .provider-card-icon svg{fill:currentColor}
+
+/* 剧本库：勾选框常驻，工具栏放导出、导入、删除 */
+.library-toolbar{gap:10px}
+.library-toolbar .muted{margin-right:6px}
+.library-toolbar .small{gap:6px}
+.library-card .library-card-check{opacity:.55;transition:opacity .2s}
+.library-card:hover .library-card-check,.library-card.selected .library-card-check,.library-card-check:focus-within{opacity:1}

@@ -266,3 +266,11 @@ npm start
 - 全部重新解析分镜复用现有资产清单：新段落的 `analysisState` 直接记为 `completed`，否则界面会再次要求“拆解剧本并列资产清单”，全自动模式下还会接着生图。启动时 `recover()` 会修正旧版本留下的这种项目。
 - 项目标题旁的“复制为新项目”图标已去掉；改剧本后另建版本的原有流程不变。
 - 厂商连接测试：`POST /api/provider-profiles/:id/test`，实现在 `src/provider-test.js`。文本发一次 `max_tokens:16` 的对话；生图和视频只发 GET（`/v1/models`、菲阳的 `/caps`、任务查询），不提交生成。结果分 `ok` / `reachable` / `fail` 三档，不回显 Key 和上游响应。
+
+## 12. 剧本导出与导入
+
+- 剧本库不再有“选择 / 完成选择”模式：勾选框常驻，工具栏是全选、导出、导入、删除。
+- `GET /api/projects/export?ids=a,b`：把所选项目的 `project.json` 和项目目录里的媒体文件打成一个 ZIP 流式下载。`POST /api/projects/import`（`Content-Type: application/zip`，仍需页面令牌）：解包后每个项目生成新的 id，不覆盖已有项目。
+- 实现在 `src/project-transfer.js` 和 `src/zip.js`（自己写的最小 ZIP 读写，没有加依赖；不支持超过 4GB 和加密的包）。
+- 包里不含 Key、厂商配置、语音库和上传缓存；进行中的任务、远端任务号和厂商绑定在导出时去掉。语音工作台的音频不随包走，导入后分镜里对本机不存在的音频引用会被清掉。
+- 导入时媒体文件名必须通过和 `store.media` 相同的白名单，引用了包里没有的文件按“未生成”处理。
