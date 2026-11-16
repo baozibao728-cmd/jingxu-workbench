@@ -14,7 +14,8 @@ function normalizeReparseChunks(chunks){
   const pieces=splitScript(text,REPARSE_CHUNK_MAX);
   pieces.forEach((piece,index)=>result.push({...piece,id:`${chunk.id}-${index+1}`,title:index===0?chunk.title:piece.title,analysisState:'completed',storyboardState:'idle',assetIds:chunk.assetIds||[]}));
  }
- return result.map((chunk,index)=>({...chunk,index:index+1}));
+ // 全部重解析复用现有资产清单，新段落不需要再提取资产。
+ return result.map((chunk,index)=>({...chunk,index:index+1,analysisState:'completed'}));
 }
 export function reparseSummary(record){if(!record)return undefined;const {draft,...summary}=record;return {...summary,generated: draft?.shots.length??record.generated??0,completed:draft?.chunks.filter(c=>c.storyboardState==='completed'||c.referenceOnly).length??record.completed??0,total:draft?.chunks.length??record.total??0,canResume:record.state==='failed'&&!!draft};}
 export async function startStoryboardReparse(workflow,id,input={}){
@@ -46,7 +47,7 @@ export async function startStoryboardReparse(workflow,id,input={}){
  workflow.store.log(project,'开始全部重新解析分镜，复用已有图片；仅生成文字，不自动生成视频。');await workflow.store.save(project);
  await workflow.launch(`reparse:${id}`,async()=>{
   try{
-   const work={id:project.id,title:project.title,script:project.script,style:project.style,aspectRatio:project.aspectRatio,ruleNotes:[project.ruleNotes,record.notes&&`本次全部重解析要求：${record.notes}`].filter(Boolean).join('\n'),clipDuration:record.duration,resolution:record.resolution,assets:structuredClone(project.assets),shots:record.draft.shots,chunks:record.draft.chunks,storyboardPrompts:record.draft.storyboardPrompts,revision:project.revision,preparation:{state:'running'},logs:[]};
+   const work={id:project.id,title:project.title,script:project.script,style:project.style,aspectRatio:project.aspectRatio,ruleNotes:[project.ruleNotes,record.notes&&`本次全部重解析要求：${record.notes}`].filter(Boolean).join('\n'),clipDuration:record.duration,resolution:record.resolution,assets:structuredClone(project.assets),shots:record.draft.shots,chunks:record.draft.chunks,storyboardPrompts:record.draft.storyboardPrompts,revision:project.revision,preparation:{state:'running'},logs:[],logTarget:project};
    await workflow.generateStoryboards(work,{promptRules:record.draft.storyboardPrompts,checkpoint:async()=>{
     record.draft={shots:work.shots,chunks:work.chunks,storyboardPrompts:work.storyboardPrompts};
     const completed=work.chunks.filter(c=>c.referenceOnly||c.storyboardState==='completed').length;

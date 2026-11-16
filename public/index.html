@@ -4,14 +4,19 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f6f5f2">
-  <title>镜序 · 短剧工作台</title>
+  <title>镜序</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231c1e21'/%3E%3Cpath fill='none' stroke='%23fff' stroke-width='2.6' stroke-linecap='round' d='M6.5 14v-2.5a5 5 0 0 1 5-5H14M25.5 18v2.5a5 5 0 0 1-5 5H18'/%3E%3Cpath fill='%23e9805c' d='M13 11.8v8.4a1 1 0 0 0 1.5.8l6.7-4.2a1 1 0 0 0 0-1.6L14.5 11a1 1 0 0 0-1.5.8z'/%3E%3C/svg%3E">
+  <script>(function(){var t='system';try{t=localStorage.getItem('drama-theme')||'system'}catch(e){}document.documentElement.dataset.theme=t==='system'?(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):t==='dark'?'dark':'light'})()</script>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <div id="app"><div class="initial-loading"><span class="brand-mark">镜</span><p>正在打开工作台…</p></div></div>
+  <div class="sky" aria-hidden="true"><i></i><i></i><i></i><canvas id="space"></canvas><canvas id="galaxy"></canvas></div>
+  <div id="app"><div class="initial-loading"><svg class="brand-logo" viewBox="0 0 32 32" aria-hidden="true"><path class="brand-logo-frame" d="M4.5 13.5V10a5.5 5.5 0 0 1 5.5-5.5h3.5M27.5 18.5V22a5.5 5.5 0 0 1-5.5 5.5h-3.5"/><path class="brand-logo-play" d="M12.6 11.3v9.4a1.1 1.1 0 0 0 1.7.9l7.5-4.7a1.1 1.1 0 0 0 0-1.8l-7.5-4.7a1.1 1.1 0 0 0-1.7.9z"/></svg><p>正在打开工作台…</p></div></div>
   <div id="modal-root"></div>
   <div id="toast" role="status" aria-live="polite"></div>
   <input id="asset-file" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+  <input id="project-import-file" type="file" accept=".zip,application/zip" hidden>
   <script type="module" src="/app.js"></script>
+  <script src="/backdrop.js" defer></script>
 </body>
 </html>

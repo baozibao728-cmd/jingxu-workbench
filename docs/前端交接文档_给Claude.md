@@ -247,3 +247,30 @@ npm start
 - 现有本机 Key、用户项目、图片、视频、音频和历史记录都属于用户数据。
 - 不要打印 Key，不要将 Key 复制到文档、截图、提交信息或远程仓库。
 - 当前本机版本为1.2.6，GitHub Release未同步本机最近的所有版本，修改后先保留本地可运行状态，再单独处理发布。
+
+## 10. 主题和毛玻璃（2026-11-15 新增）
+
+- 侧栏左下角有三档主题切换：白天、跟随系统、夜间。选择记在 localStorage 的 `drama-theme`，默认跟随系统。
+- `public/index.html` 头部的内联脚本在样式加载前设置 `<html data-theme>`，避免闪白。`public/app.js` 的 `applyTheme()`、`setTheme()`、`themeSwitch()` 负责切换和渲染按钮。
+- `public/style.css` 里不再写死颜色。所有颜色都是变量，两套取值在文件末尾的“主题层”里（`:root` 和 `:root[data-theme=dark]`）。新增样式请直接用这些变量，例如 `--ink`、`--muted`、`--paper`、`--sunk`、`--line`、`--accent`。
+- 毛玻璃只加在大块面板上（侧栏、顶栏、分区卡片、弹窗遮罩、浮动条）。素材卡、分镜卡这类数量多的卡片只用半透明底色，不加模糊，避免滚动掉帧。
+- 不支持 `backdrop-filter` 的浏览器会通过 `@supports` 退回不透明底色。
+- 动态背景在 `public/backdrop.js`：夜间是宇宙（WebGL 着色器），白天是线描星轨，移植自「Claude 会话同步」面板。没有 WebGL 时退回 2D 画布，再不行露出 CSS 光斑。这个文件已加进 `src/server.js` 的静态白名单。
+- 顶栏已去掉。并发设置、接口设置、任务记录、主题切换和连接状态都在侧栏底部。侧栏可收起成图标栏（`toggleSidebar()`，记在 localStorage 的 `drama-sidebar`），窗口窄于 900px 时固定收起。
+- 主按钮（`button.primary`）是中性色：白天深色、夜间浅色。橙色 `--accent` 只用于步骤、链接等小面积提示。
+
+## 11. 解析容错、剧本改动与连接测试
+
+- 分镜解析（`generateStoryboards`）：输出被截断时自动把该段对半拆开继续；某段没返回分镜或引用写错时同一段自动重试，最多共 3 次。单条重新拆分（`rebuildShot`）在 AI 返回内容不合格时同样最多试 3 次，接口本身报错不重试。
+- 图片引用除了 key，也认素材名称和内部编号（`referenceKeys`）。
+- 全部重新解析分镜复用现有资产清单：新段落的 `analysisState` 直接记为 `completed`，否则界面会再次要求“拆解剧本并列资产清单”，全自动模式下还会接着生图。启动时 `recover()` 会修正旧版本留下的这种项目。
+- 项目标题旁的“复制为新项目”图标已去掉；改剧本后另建版本的原有流程不变。
+- 厂商连接测试：`POST /api/provider-profiles/:id/test`，实现在 `src/provider-test.js`。文本发一次 `max_tokens:16` 的对话；生图和视频只发 GET（`/v1/models`、菲阳的 `/caps`、任务查询），不提交生成。结果分 `ok` / `reachable` / `fail` 三档，不回显 Key 和上游响应。
+
+## 12. 剧本导出与导入
+
+- 剧本库不再有“选择 / 完成选择”模式：勾选框常驻，工具栏是全选、导出、导入、删除。
+- `GET /api/projects/export?ids=a,b`：把所选项目的 `project.json` 和项目目录里的媒体文件打成一个 ZIP 流式下载。`POST /api/projects/import`（`Content-Type: application/zip`，仍需页面令牌）：解包后每个项目生成新的 id，不覆盖已有项目。
+- 实现在 `src/project-transfer.js` 和 `src/zip.js`（自己写的最小 ZIP 读写，没有加依赖；不支持超过 4GB 和加密的包）。
+- 包里不含 Key、厂商配置、语音库和上传缓存；进行中的任务、远端任务号和厂商绑定在导出时去掉。语音工作台的音频不随包走，导入后分镜里对本机不存在的音频引用会被清掉。
+- 导入时媒体文件名必须通过和 `store.media` 相同的白名单，引用了包里没有的文件按“未生成”处理。

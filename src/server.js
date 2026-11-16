@@ -1,5 +1,7 @@
 import { createServer } from 'node:http';
-import { createReadStream } from 'node:fs';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { once } from 'node:events';
+import { tmpdir } from 'node:os';
 import { readFile, writeFile, stat, mkdir, rm } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { join, extname, resolve } from 'node:path';
@@ -15,6 +17,8 @@ import { PromptSettings } from './prompt-settings.js';
 import { ConcurrencySettings } from './concurrency.js';
 import { ProviderSettings, safeProvider } from './provider-settings.js';
 import { createProvider } from './custom-providers.js';
+import { testProvider } from './provider-test.js';
+import { exportPlan, writeExport, importProjects } from './project-transfer.js';
 import { UpdateManager } from './update-manager.js';
 import { spawn } from 'node:child_process';
 import { MiniMaxTTSProvider } from './minimax-tts.js';
@@ -91,7 +95,8 @@ export async function createApplication({ root = join(applicationRoot, 'data', '
           if (request.headers['x-workflow-token'] !== token || (origin && new URL(origin).host !== request.headers.host)) {
             return send(response, 403, { error: '页面已过期，请刷新后再操作' });
           }
-          if (!request.headers['content-type']?.startsWith('application/json')) return send(response, 415, { error: '请求必须为JSON' });
+          const zipUpload = url.pathname === '/api/projects/import' && request.headers['content-type']?.startsWith('application/zip');
+          if (!zipUpload && !request.headers['content-type']?.startsWith('application/json')) return send(response, 415, { error: '请求必须为JSON' });
         }
         if (url.pathname === '/api/bootstrap' && request.method === 'GET') return send(response, 200, { token, settings: settings(), providerProfiles:providers.view(), updates:updates.view(), concurrency: workflow.concurrency(), prompts: prompts.view(), projects: store.list(), capabilities, videoProfile: workflow.videoProfile(), voice: voiceStore.view(Boolean(config.minimax.apiKey)), rules: { characterSheet: characterSheetSystemPrompt() } });
         if (url.pathname === '/api/voice' && request.method === 'GET') return send(response, 200, voiceStore.view(Boolean(config.minimax.apiKey)));
@@ -122,6 +127,29 @@ export async function createApplication({ root = join(applicationRoot, 'data', '
         if (url.pathname === '/api/prompts' && request.method === 'GET') return send(response, 200, prompts.view());
         if (url.pathname === '/api/prompts' && request.method === 'POST') return send(response, 200, await prompts.save(await body(request)));
         if (url.pathname === '/api/projects' && request.method === 'GET') return send(response, 200, store.list());
+        if (url.pathname === '/api/projects/export' && request.method === 'GET') {
+          // 先核对项目和大小，确认能导出再开始回传。
+          const plan = await exportPlan(store, (url.searchParams.get('ids') || '').split(',').filter(Boolean), workflow);
+          const stamp = new Date().toISOString().slice(0, 10).replaceAll('-', '');
+          const name = `镜序-${plan.length === 1 ? plan[0].project.title.replace(/[\\/:*?"<>|\r\n]/g, '').slice(0, 40) || '剧本' : `${plan.length}个剧本`}-${stamp}.zip`;
+          response.writeHead(200, { 'Content-Type': 'application/zip', 'Content-Disposition': `attachment; filename="jingxu-export-${stamp}.zip"; filename*=UTF-8''${encodeURIComponent(name)}`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+          await writeExport(plan, chunk => new Promise((done, failed) => { if (response.destroyed) return failed(new Error('下载已取消')); response.write(chunk) ? done() : response.once('drain', done); }));
+          return response.end();
+        }
+        if (url.pathname === '/api/projects/import' && request.method === 'POST') {
+          if (!request.headers['content-type']?.startsWith('application/zip')) return send(response, 415, { error: '请选择镜序导出的 ZIP 文件' });
+          const temporary = join(tmpdir(), `jingxu-import-${randomBytes(8).toString('hex')}.zip`);
+          try {
+            let size = 0;
+            // 不用 pipeline：它结束时会连同请求的连接一起销毁，回应就发不出去了。
+            const file = createWriteStream(temporary, { mode: 0o600 });
+            try {
+              for await (const chunk of request) { size += chunk.length; if (size > 4 * 1024 * 1024 * 1024) throw Object.assign(new Error('压缩包超过 4GB，请分几次导入'), { status: 413 }); if (!file.write(chunk)) await once(file, 'drain'); }
+            } finally { await new Promise(done => file.end(done)); }
+            const imported = await importProjects(store, workflow, temporary, { videoProviderId: config.fydmai.id || '', hasAudio: id => voiceStore.data.history.some(item => item.id === id) });
+            return send(response, 201, { imported, projects: store.list() });
+          } finally { await rm(temporary, { force: true }); }
+        }
         if (url.pathname === '/api/projects/batch-delete' && request.method === 'POST') {
           const deleted = await workflow.deleteProjects((await body(request)).ids);
           return send(response, 200, { deleted });
@@ -133,6 +161,8 @@ export async function createApplication({ root = join(applicationRoot, 'data', '
           return send(response, 201, workflow.view(await store.create({ ...input, videoProviderId: input.videoProviderId || config.fydmai.id, clipDuration: input.clipDuration ?? profile.defaultDuration, resolution: input.resolution ?? profile.defaultResolution })));
         }
         if (url.pathname === '/api/provider-profiles' && request.method === 'GET') return send(response,200,providers.view());
+        const providerTest = url.pathname.match(/^\/api\/provider-profiles\/([^/]+)\/test$/);
+        if (providerTest && request.method === 'POST') return send(response, 200, await testProvider(providers.byId(decodeURIComponent(providerTest[1]))));
         if (url.pathname === '/api/settings' && request.method === 'POST') {
           if(busy())throw new Error('有任务运行中，请完成后再切换厂商，避免原任务连接改变');
           const input=await body(request);
@@ -203,7 +233,7 @@ export async function createApplication({ root = join(applicationRoot, 'data', '
       if (segments[0] === 'voice-media' && segments.length === 2 && ['GET', 'HEAD'].includes(request.method)) return await streamFile(request, response, voiceStore.file(segments[1]));
       if (!['GET', 'HEAD'].includes(request.method)) return send(response, 405, { error: '不支持的请求方法' });
       const filename = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
-      if (!['index.html', 'app.js', 'model-options.js', 'settings-ui.js', 'image-viewer.js', 'mentions.js', 'style.css'].includes(filename)) return send(response, 404, { error: '页面不存在' });
+      if (!['index.html', 'app.js', 'model-options.js', 'settings-ui.js', 'image-viewer.js', 'mentions.js', 'backdrop.js', 'style.css'].includes(filename)) return send(response, 404, { error: '页面不存在' });
       return await streamFile(request, response, join(publicRoot, filename));
     } catch (error) {
       if (!response.headersSent) send(response, error.status || (error.code === 'ENOENT' ? 404 : 400), { error: error.code === 'ENOENT' ? '文件不存在' : workflow.errorText(error) });
