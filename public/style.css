@@ -413,3 +413,8 @@ html[data-sidebar=open] .side-foot{padding:12px 8px 0}
 .library-card.picking:not(.selected){opacity:.72}
 .library-card.picking .library-card-arrow{visibility:hidden}
 .library-pick-toggle.active,.library-pick-toggle.active:hover:not(:disabled){background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent-ink)}
+
+/* 产品标志：三帧（上一帧、当前帧、下一帧） */
+.brand-logo-prev{fill:var(--ink);opacity:.35}
+.brand-logo-now{fill:var(--ink)}
+.brand-logo-next{fill:var(--accent)}
