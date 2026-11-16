@@ -277,3 +277,13 @@ npm start
 - 拖入导入：把导出的 ZIP，或 TXT / Markdown 剧本文件拖进窗口任意位置（资产卡片除外）即可导入；剧本库工具栏的“导入剧本”既是按钮也是落点。入口统一是 `importProjectFile()`：ZIP 走 `/api/projects/import`，文本文件新建一个项目并把内容填进剧本（文件名作标题，编码按 UTF-8、UTF-16、GB18030 依次尝试）。
 - 视频渠道按模型展开：`videoChannels()` 把每个已配置视频方案的模型列表逐个列出（`value` 为 `方案id::模型id`），项目用 `videoProviderId` + `videoModel` 记住所选；`videoConfigForProject()` 和快照的 `videoConfig()` 据此覆盖方案当前模型。方案里“当前使用模型”只是没单独选时的默认值。
 - 系统提示词不再内置：`promptDefinitions` 五项的 `default` 都是空字符串，`prompts/storyboard-format-system.txt` 已从仓库删除。使用者在“接口设置 → 系统提示词”里自己填；已经保存过自定义内容的电脑不受影响。
+
+## 自由创作（侧栏“自由创作”）
+
+- 不经过剧本和分镜：一段提示词加参考图，直接生成视频或图片。前端在 `public/studio.js`，后端在 `src/studio.js`，接口是 `/api/studio`、`/api/studio/references`、`/api/studio/items`，文件走 `/studio-media/`。
+- 数据放在 `data/projects/_studio/`（`studio.json` 加参考图、成品文件），不属于任何项目，不进项目导出包。
+- 参考图按顺序叫 图1、图2…，提示词里写 `@图1` 引用；提交时后端换成各厂商自己的引用写法。可以点选、拖入或粘贴图片。
+- 视频用“接口配置”里已配置的视频方案和模型，图片用当前启用的生图方案；并发和项目共用同一组上限。
+- 提交前先记下提交时间，拿到任务号立刻保存；失败后“继续查询”只查原任务，不会重复提交。
+- 输入区内容记在模块里的 `draft`，整页重画后还原；结果列表按条更新，不打断正在播放的视频。停在这个页面时，后台轮询不重画项目。
+

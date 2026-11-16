@@ -24,6 +24,7 @@ import { UpdateManager } from './update-manager.js';
 import { spawn } from 'node:child_process';
 import { MiniMaxTTSProvider } from './minimax-tts.js';
 import { VoiceStore } from './voice-store.js';
+import { Studio } from './studio.js';
 
 const applicationRoot = fileURLToPath(new URL('..', import.meta.url));
 const publicRoot = join(applicationRoot, 'public');
@@ -53,6 +54,7 @@ export async function createApplication({ root = join(applicationRoot, 'data', '
   // Bind original paid tasks and preserve unchanged legacy completion checks.
   for(const project of store.projects.values())if(workflow.migrateProviderBindings(project))await store.save(project);
   await workflow.recover();
+  const studio = new Studio(root, workflow); await studio.init();
   const token = randomBytes(24).toString('hex');
   const busy=()=>workflow.active.size>0||[...store.projects.values()].some(p=>[p.preparation,p.mergeJob,...p.assets.map(a=>a.job),...p.shots.flatMap(s=>[s.job,s.rebuildJob])].some(j=>j&&['pending','submitting','queued','running','downloading'].includes(j.state)));
   const pkg=JSON.parse(await readFile(join(applicationRoot,'package.json'),'utf8'));
@@ -119,6 +121,16 @@ export async function createApplication({ root = join(applicationRoot, 'data', '
           const input = await body(request); const text = String(input.text || '').trim(); if (!text) throw new Error('请输入要合成的文字'); if (text.length > 9999) throw new Error('单次语音文字不能超过9999字');
           const merged = { ...voiceStore.data, ...input }; const result = await new MiniMaxTTSProvider(config.minimax).synthesize({ text, model: merged.model, voiceId: merged.voiceId, speed: merged.speed, vol: merged.vol, pitch: merged.pitch, emotion: merged.emotion, format: 'mp3', languageBoost: merged.languageBoost, pronunciation: merged.pronunciation });
           const file = await voiceStore.saveAudio(result.bytes, result.format); const history = { id: randomBytes(8).toString('hex'), file, url: `/voice-media/${file}`, name: String(input.name || '').trim().slice(0, 80) || text.slice(0, 32), text: text.slice(0, 120), model: result.model, voiceId: result.voiceId, characterAssetId: '', createdAt: new Date().toISOString(), durationMs: result.meta.audio_length || 0 }; await voiceStore.addHistory(history); return send(response, 200, { ...history, bytes: result.bytes.length });
+        }
+        if (segments[1] === 'studio') {
+          if (segments.length === 2 && request.method === 'GET') return send(response, 200, studio.view());
+          if (segments[2] === 'references' && segments.length === 3 && request.method === 'POST') {
+            const input = await body(request);
+            return send(response, 201, await studio.addReference(Buffer.from(String(input.base64 || ''), 'base64'), input.name));
+          }
+          if (segments[2] === 'items' && segments.length === 3 && request.method === 'POST') return send(response, 202, await studio.create(await body(request)));
+          if (segments[2] === 'items' && segments[4] === 'resume' && request.method === 'POST') return send(response, 202, await studio.resume(segments[3]));
+          if (segments[2] === 'items' && segments.length === 4 && request.method === 'DELETE') return send(response, 200, await studio.remove(segments[3]));
         }
         if (url.pathname === '/api/concurrency' && request.method === 'GET') return send(response, 200, workflow.concurrency());
         if (url.pathname === '/api/concurrency' && request.method === 'POST') {
@@ -231,10 +243,11 @@ export async function createApplication({ root = join(applicationRoot, 'data', '
         return send(response, 404, { error: '接口不存在' });
       }
       if (segments[0] === 'media' && segments.length === 3 && ['GET', 'HEAD'].includes(request.method)) return await streamFile(request, response, store.media(segments[1], segments[2]));
+      if (segments[0] === 'studio-media' && segments.length === 2 && ['GET', 'HEAD'].includes(request.method)) return await streamFile(request, response, studio.media(segments[1]));
       if (segments[0] === 'voice-media' && segments.length === 2 && ['GET', 'HEAD'].includes(request.method)) return await streamFile(request, response, voiceStore.file(segments[1]));
       if (!['GET', 'HEAD'].includes(request.method)) return send(response, 405, { error: '不支持的请求方法' });
       const filename = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
-      if (!['index.html', 'app.js', 'model-options.js', 'settings-ui.js', 'image-viewer.js', 'mentions.js', 'backdrop.js', 'style.css'].includes(filename)) return send(response, 404, { error: '页面不存在' });
+      if (!['index.html', 'app.js', 'model-options.js', 'settings-ui.js', 'image-viewer.js', 'mentions.js', 'studio.js', 'backdrop.js', 'style.css'].includes(filename)) return send(response, 404, { error: '页面不存在' });
       return await streamFile(request, response, join(publicRoot, filename));
     } catch (error) {
       if (!response.headersSent) send(response, error.status || (error.code === 'ENOENT' ? 404 : 400), { error: error.code === 'ENOENT' ? '文件不存在' : workflow.errorText(error) });
@@ -242,7 +255,7 @@ export async function createApplication({ root = join(applicationRoot, 'data', '
     }
   });
   server.on('close',()=>{clearInterval(updateTimer);clearInterval(retryUpdateTimer);});
-  return { server, store, workflow, token, settings, providers, updates };
+  return { server, store, workflow, token, settings, providers, updates, studio };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
