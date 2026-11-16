@@ -249,7 +249,7 @@ input[type=checkbox]:active{transform:scale(.88)}
 
 
 /* ===== 布局二版：去掉顶栏，只留可收起的侧栏和主区；配色收敛成中性色，强调色只用于少量提示 ===== */
-:root{--side:272px;--side-rail:68px}
+:root{--side:288px;--side-rail:68px}
 .app-shell{grid-template-columns:var(--side) minmax(0,1fr);transition:grid-template-columns .32s var(--ease-out)}
 html[data-sidebar=collapsed] .app-shell{grid-template-columns:var(--side-rail) minmax(0,1fr)}
 html[data-sidebar] .sidebar{width:var(--side);padding:18px 12px 14px;gap:0;border-right:1px solid var(--line);box-shadow:none;transition:width .32s var(--ease-out),padding .32s var(--ease-out),background-color .4s}
@@ -353,3 +353,10 @@ html[data-sidebar=open] .side-item{font-size:14px;padding:10px 12px;gap:12px}
 html[data-sidebar=open] .sidebar-bottom .side-item{font-size:13.5px;padding:9px 12px}
 html[data-sidebar=open] .project-link{padding:8px 10px;gap:11px}
 html[data-sidebar=open] .project-title{font-size:13px}
+
+/* 主题切换：固定格子，圆点和图标都居中在格子里，不继承侧栏按钮的左对齐、内边距和悬停位移 */
+.theme-switch,html[data-sidebar=collapsed] .theme-switch{display:inline-grid;grid-auto-flow:column;grid-auto-columns:30px;grid-auto-rows:30px;place-items:center;gap:0;padding:3px;width:auto;height:auto;box-sizing:content-box;overflow:hidden}
+html[data-sidebar=collapsed] .theme-switch{grid-auto-flow:row}
+.theme-switch button,html[data-sidebar=collapsed] .theme-switch button,.sidebar-bottom .theme-switch button{display:grid;place-items:center;width:28px;height:28px;min-width:0;min-height:0;flex:none;margin:0;padding:0;gap:0;line-height:0;font-size:0;border:0;border-radius:50%;justify-content:center}
+.theme-switch button,.theme-switch button:hover:not(:disabled),.theme-switch button:active:not(:disabled){transform:none;box-shadow:none}
+.theme-switch button svg{display:block;width:15px;height:15px;margin:0;flex:none}
