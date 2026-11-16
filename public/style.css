@@ -408,7 +408,7 @@ html[data-sidebar=open] .side-foot{padding:12px 8px 0}
 .library-import-drop svg{flex:none;color:var(--accent)}
 .library-import-drop span{display:grid;gap:2px;min-width:0}
 .library-import-drop strong{font-size:12px;font-weight:600;line-height:1.1}
-.library-import-drop small{font-size:10px;color:var(--muted);line-height:1.15;white-space:nowrap}
+.library-import-drop small{font-size:11px;color:var(--muted);line-height:1.15;white-space:nowrap}
 .library-import-drop:hover,.library-import-drop.is-dragging{border-color:var(--accent);background:var(--accent-soft);box-shadow:0 0 0 2px var(--accent-line);transform:translateY(-1px)}
 .library-import-drop.is-importing{cursor:wait;opacity:.7}
 .library-card .library-card-check{opacity:.55;transition:opacity .2s}
