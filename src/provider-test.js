@@ -66,8 +66,20 @@ async function testMedia(profile,service,fetchImpl){
    if(entry?.onShelf===false)return {level:'reachable',message:`地址和 Key 有效，但厂商当前把 ${profile.model} 标记为未上架，现在提交会被拒绝。${note}`};
    if(entry)ids=[...ids,profile.model];
   }
-  if(ids.length&&!ids.includes(profile.model))return {level:'reachable',message:`地址和 Key 有效，但厂商的模型列表里没有 ${profile.model}，请核对模型 ID。${note}`};
-  return {level:'ok',message:`地址和 Key 有效${ids.length?`，模型 ${profile.model} 在厂商的模型列表里`:''}。${note}余额和生成权限要到真正生成时才能确认。`};
+  // 萤漫这类接口有 GET /v1/balance，顺便把积分余额查出来；没有这个接口的厂商会返回 404，忽略即可。
+  let balance='';
+  if(profile.protocol==='openai-video'){
+   const b=await call(profile,'/v1/balance',{fetchImpl});
+   if(b.status===200&&Number.isFinite(Number(b.payload?.available))){const n=v=>Number(v).toLocaleString('zh-CN',{maximumFractionDigits:2});balance=`可用积分 ${n(b.payload.available)}${Number(b.payload.frozen)>0?`，冻结 ${n(b.payload.frozen)}`:''}。`;}
+  }
+  if(ids.length&&!ids.includes(profile.model)){
+   // 列出厂商实际提供的同类模型 ID，方便直接照着改。
+   const list=Array.isArray(models.payload?.data)?models.payload.data:[];
+   const same=list.filter(item=>item&&typeof item==='object'&&String(item.capability||'').toLowerCase()===(service==='grsai'?'image':'video')).map(item=>item.id).filter(Boolean);
+   const hint=same.length?`厂商的${kind}模型 ID 有：${same.slice(0,20).join('、')}${same.length>20?' 等':''}。`:'';
+   return {level:'reachable',message:`地址和 Key 有效，但厂商的模型列表里没有 ${profile.model}，请核对模型 ID。${hint}${balance}${note}`};
+  }
+  return {level:'ok',message:`地址和 Key 有效${ids.length?`，模型 ${profile.model} 在厂商的模型列表里`:''}。${balance}${note}${balance?'':'余额和生成权限要到真正生成时才能确认。'}`};
  }
  for(const path of queries){
   const result=await call(profile,path,{fetchImpl});

@@ -40,3 +40,21 @@ test('萤漫 OpenAI 兼容视频适配器用 multipart 传图音，完成后从 
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test('萤漫成片下载跟随一次跳转，且不把 Key 带到别的域名', async () => {
+  const { createProvider } = await import('../src/custom-providers.js');
+  const { mkdtemp, rm, readFile } = await import('node:fs/promises');
+  const { join } = await import('node:path'); const { tmpdir } = await import('node:os');
+  const root = await mkdtemp(join(tmpdir(), 'yingman-redirect-')); const calls = [];
+  const fetchImpl = async (url, options = {}) => {
+    calls.push({ url: String(url), headers: options.headers || {} });
+    if (String(url).endsWith('/content')) return new Response(null, { status: 302, headers: { location: 'https://cdn.example/file.mp4?sig=1' } });
+    return new Response(Buffer.from('redirected-video'), { status: 200 });
+  };
+  try {
+    const provider = createProvider('fydmai', { protocol: 'openai-video', baseUrl: 'https://yingman.example', apiKey: 'secret-key', model: 'm', fetchImpl });
+    const out = join(root, 'a.mp4'); await provider.downloadTask('video-1', out);
+    assert.equal(await readFile(out, 'utf8'), 'redirected-video');
+    assert.ok(calls[0].headers.Authorization.includes('secret-key')); assert.deepEqual(calls[1].headers, {});
+  } finally { await rm(root, { recursive: true, force: true }); }
+});

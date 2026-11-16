@@ -72,7 +72,12 @@ class YingmanVideoProvider {
  async getCapabilities(){return{models:[{kind:'video',model:this.config.model,minDuration:4,maxDuration:30,defaultDuration:30,resolutions:['720p'],defaultResolution:'720p',maxReference:10}]};}
  async downloadTask(id,destination){
   const url=new URL(`/v1/videos/${encodeURIComponent(id)}/content`,this.config.baseUrl);
-  const response=await this.api.fetchImpl(url,{headers:{[this.api.authHeader]:`${this.api.authPrefix}${this.api.apiKey}`},redirect:'error',signal:AbortSignal.timeout(180000)});
+  // 文档示例用 curl -L：content 接口可能跳转到存储地址。跳转时只跟一次，且不把 Key 带到别的域名。
+  let response=await this.api.fetchImpl(url,{headers:{[this.api.authHeader]:`${this.api.authPrefix}${this.api.apiKey}`},redirect:'manual',signal:AbortSignal.timeout(180000)});
+  if(response.status>=300&&response.status<400){
+   const next=new URL(response.headers.get('location')||'',url);if(next.protocol!=='https:')throw Error('萤漫成片下载地址必须为 HTTPS');
+   response=await this.api.fetchImpl(next,{headers:next.origin===url.origin?{[this.api.authHeader]:`${this.api.authPrefix}${this.api.apiKey}`}:{},redirect:'error',signal:AbortSignal.timeout(180000)});
+  }
   if(!response.ok)throw Error(`萤漫成片下载失败 HTTP ${response.status}`);
   const bytes=Buffer.from(await response.arrayBuffer());if(!bytes.length)throw Error('萤漫成片为空');
   await mkdir(dirname(destination),{recursive:true});const temp=`${destination}.${randomUUID()}.part`;

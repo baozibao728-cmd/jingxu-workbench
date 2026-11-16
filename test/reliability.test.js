@@ -77,3 +77,13 @@ test('文本的连接测试只发一次极短对话',async()=>{
  assert.equal(result.level,'ok');assert.equal(ok.calls.length,1);assert.equal(JSON.parse(ok.calls[0].body).max_tokens,16);
  const denied=fake(()=>[401,{}]);assert.match((await testProvider(profile('deepseek'),denied)).message,/Key 被拒绝/);
 });
+
+test('萤漫连接测试顺带查余额，模型ID不对时列出厂商的视频模型；全程只发GET',async()=>{
+ const p=profile('fydmai',{protocol:'openai-video',model:'seedance-2.5-flash-cc'});
+ const net=list=>fake(path=>path==='/v1/models'?[200,{data:list}]:path==='/v1/balance'?[200,{available:1000,frozen:12.5}]:[404,{}]);
+ const ok=net([{id:'seedance-2.5-flash-cc',capability:'video'}]);const good=await testProvider(p,ok);
+ assert.equal(good.level,'ok');assert.match(good.message,/可用积分 1,000，冻结 12.5/);assert.ok(ok.calls.every(c=>c.method==='GET'));assert.ok(ok.calls.some(c=>c.path==='/v1/balance'));
+ const wrong=net([{id:'real-video-id',capability:'video'},{id:'some-chat',capability:'text'}]);const hint=await testProvider(p,wrong);
+ assert.equal(hint.level,'reachable');assert.match(hint.message,/视频模型 ID 有：real-video-id。/);assert.ok(!hint.message.includes('some-chat'));assert.match(hint.message,/可用积分/);
+ const none=fake(path=>path==='/v1/models'?[200,{data:[{id:'seedance-2.5-flash-cc'}]}]:[404,{}]);assert.match((await testProvider(p,none)).message,/余额和生成权限要到真正生成时才能确认/);
+});
