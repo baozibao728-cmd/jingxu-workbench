@@ -276,3 +276,4 @@ npm start
 - 导入时媒体文件名必须通过和 `store.media` 相同的白名单，引用了包里没有的文件按“未生成”处理。
 - 拖入导入：把导出的 ZIP，或 TXT / Markdown 剧本文件拖进窗口任意位置（资产卡片除外）即可导入；剧本库工具栏的“导入剧本”既是按钮也是落点。入口统一是 `importProjectFile()`：ZIP 走 `/api/projects/import`，文本文件新建一个项目并把内容填进剧本（文件名作标题，编码按 UTF-8、UTF-16、GB18030 依次尝试）。
 - 视频渠道按模型展开：`videoChannels()` 把每个已配置视频方案的模型列表逐个列出（`value` 为 `方案id::模型id`），项目用 `videoProviderId` + `videoModel` 记住所选；`videoConfigForProject()` 和快照的 `videoConfig()` 据此覆盖方案当前模型。方案里“当前使用模型”只是没单独选时的默认值。
+- 系统提示词不再内置：`promptDefinitions` 五项的 `default` 都是空字符串，`prompts/storyboard-format-system.txt` 已从仓库删除。使用者在“接口设置 → 系统提示词”里自己填；已经保存过自定义内容的电脑不受影响。
