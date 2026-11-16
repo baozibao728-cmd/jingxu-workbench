@@ -87,3 +87,21 @@ test('萤漫连接测试顺带查余额，模型ID不对时列出厂商的视频
  assert.equal(hint.level,'reachable');assert.match(hint.message,/视频模型 ID 有：real-video-id。/);assert.ok(!hint.message.includes('some-chat'));assert.match(hint.message,/可用积分/);
  const none=fake(path=>path==='/v1/models'?[200,{data:[{id:'seedance-2.5-flash-cc'}]}]:[404,{}]);assert.match((await testProvider(p,none)).message,/余额和生成权限要到真正生成时才能确认/);
 });
+
+test('启动清理只删旧版内置提示词的程序文件，不动使用者保存的提示词和项目',async()=>{
+ const {removeLegacyPrompts}=await import('../src/legacy-cleanup.js');const {mkdir,readdir,readFile:read}=await import('node:fs/promises');
+ const root=await mkdtemp(join(tmpdir(),'jingxu-legacy-'));try{
+  const put=async(path,text)=>{await mkdir(join(root,path,'..'),{recursive:true});await writeFile(join(root,path),text);};
+  await put('prompts/storyboard-format-system.txt','旧模板');await put('prompts/character-sheet-system.txt','保留');
+  await put('data/program-backups/b1/src/prompt-settings.js',"default: '严格按原剧本顺序拆解，不改剧情'");await put('data/program-backups/b1/src/server.js','keep');
+  await put('data/program-backups/b2/src/prompt-settings.js',"default: ''");await put('data/pre-upgrade-1.1.0-1/prompts/storyboard-format-system.txt','旧模板');
+  await put('data/projects/prompt-settings.json','{"breakdown":"严格按原剧本顺序拆解，我自己填的"}');await put('data/projects/p1/project.json','{}');await put('data/我的备份/storyboard-format-system.txt','自己的备份');
+  const removed=await removeLegacyPrompts(root);assert.equal(removed.length,3);
+  const has=async path=>read(join(root,path)).then(()=>true,()=>false);
+  assert.equal(await has('prompts/storyboard-format-system.txt'),false);assert.equal(await has('prompts/character-sheet-system.txt'),true);
+  assert.equal(await has('data/program-backups/b1/src/prompt-settings.js'),false);assert.equal(await has('data/program-backups/b1/src/server.js'),true);assert.equal(await has('data/program-backups/b2/src/prompt-settings.js'),true);
+  assert.equal(await has('data/pre-upgrade-1.1.0-1/prompts/storyboard-format-system.txt'),false);
+  assert.equal(await has('data/projects/prompt-settings.json'),true);assert.equal(await has('data/projects/p1/project.json'),true);assert.equal(await has('data/我的备份/storyboard-format-system.txt'),true);
+  assert.deepEqual(await removeLegacyPrompts(root),[]);assert.deepEqual(await removeLegacyPrompts(join(root,'nope')),[]);
+ }finally{await rm(root,{recursive:true,force:true});}
+});

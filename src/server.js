@@ -18,6 +18,7 @@ import { ConcurrencySettings } from './concurrency.js';
 import { ProviderSettings, safeProvider } from './provider-settings.js';
 import { createProvider } from './custom-providers.js';
 import { testProvider } from './provider-test.js';
+import { removeLegacyPrompts } from './legacy-cleanup.js';
 import { exportPlan, writeExport, importProjects } from './project-transfer.js';
 import { UpdateManager } from './update-manager.js';
 import { spawn } from 'node:child_process';
@@ -245,6 +246,8 @@ export async function createApplication({ root = join(applicationRoot, 'data', '
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  // 清掉旧版本留下的内置提示词文件；失败不影响启动。
+  await removeLegacyPrompts(applicationRoot);
   const port = Number(process.env.WORKFLOW_PORT || 6040);
   const lock = join(applicationRoot, 'data', `server-${port}.lock`);
   await mkdir(join(applicationRoot, 'data'), { recursive: true });
