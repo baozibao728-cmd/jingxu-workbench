@@ -77,11 +77,11 @@
    上面的规则只引用颜色变量；两套主题的取值都在这里。
    <html data-theme="light|dark"> 由 index.html 头部脚本和 app.js 的 applyTheme() 设置。 */
 :root{color-scheme:light;
-  --bg:#f6f5f1;--ink:#22282e;--ink-2:#535b60;--muted:#757a76;--faint:#90948d;--on:#fff;
+  --bg:#f4f4f2;--ink:#1c1e21;--ink-2:#4a4f55;--muted:#70757b;--faint:#8b9096;--btn:#1c1e21;--btn-ink:#fff;--btn-hover:#33373c;--on:#fff;
   --paper:rgba(255,255,255,.64);--paper-2:rgba(255,255,255,.34);--field:rgba(255,255,255,.78);
-  --glass:rgba(255,254,250,.58);--glass-strong:rgba(255,254,251,.84);--menu:#fffefb;
-  --sunk:rgba(32,34,30,.045);--sunk-2:rgba(32,34,30,.08);--sunk-3:rgba(32,34,30,.22);
-  --line:rgba(32,34,30,.09);--line-2:rgba(32,34,30,.17);--edge:rgba(255,255,255,.7);
+  --glass:rgba(255,255,255,.62);--glass-strong:rgba(255,255,255,.88);--menu:#fff;
+  --sunk:rgba(24,28,34,.045);--sunk-2:rgba(24,28,34,.075);--sunk-3:rgba(24,28,34,.2);
+  --line:rgba(24,28,34,.075);--line-2:rgba(24,28,34,.14);--edge:rgba(255,255,255,.7);
   --accent:#dc6c48;--accent-strong:#c95d3b;--accent-ink:#b9583a;--accent-soft:rgba(220,108,72,.11);--accent-line:rgba(220,108,72,.3);
   --green:#3f7a66;--green-soft:rgba(63,122,102,.11);--green-line:rgba(63,122,102,.26);
   --red:#b24a44;--red-soft:rgba(178,74,68,.1);--red-solid:#b85d4e;--red-solid-2:#a54c40;
@@ -96,11 +96,11 @@
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI Variable Text","Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei UI","Microsoft YaHei","Noto Sans CJK SC",sans-serif;
   background:var(--bg);-webkit-text-size-adjust:100%;text-size-adjust:100%}
 :root[data-theme=dark]{color-scheme:dark;
-  --bg:#0d0e10;--ink:#f3f2ee;--ink-2:#d2d2cd;--muted:#abada8;--faint:#8e918c;--veil:rgba(8,9,12,.46);--on:#fff;
-  --paper:rgba(42,43,48,.72);--paper-2:rgba(255,255,255,.03);--field:rgba(255,255,255,.07);
-  --glass:rgba(24,25,29,.74);--glass-strong:rgba(28,29,33,.9);--menu:#232428;
+  --bg:#0a0b0e;--ink:#f4f4f5;--ink-2:#d0d2d6;--muted:#a3a7ae;--faint:#868b93;--btn:#f4f4f5;--btn-ink:#0f1114;--btn-hover:#fff;--veil:rgba(8,9,12,.46);--on:#fff;
+  --paper:rgba(36,38,44,.74);--paper-2:rgba(255,255,255,.03);--field:rgba(255,255,255,.07);
+  --glass:rgba(19,20,24,.76);--glass-strong:rgba(24,25,30,.92);--menu:#1f2025;
   --sunk:rgba(255,255,255,.06);--sunk-2:rgba(255,255,255,.1);--sunk-3:rgba(255,255,255,.28);
-  --line:rgba(255,255,255,.1);--line-2:rgba(255,255,255,.2);--edge:rgba(255,255,255,.07);
+  --line:rgba(255,255,255,.075);--line-2:rgba(255,255,255,.15);--edge:rgba(255,255,255,.07);
   --accent:#e2764f;--accent-strong:#ee8961;--accent-ink:#f59c7b;--accent-soft:rgba(238,130,92,.16);--accent-line:rgba(238,130,92,.38);
   --green:#86d3b3;--green-soft:rgba(134,211,179,.13);--green-line:rgba(134,211,179,.3);
   --red:#ff938a;--red-soft:rgba(255,120,110,.14);--red-solid:#c75a4e;--red-solid-2:#d86a5d;
@@ -110,8 +110,7 @@
   --k1:#5a2f22;--k2:#1c2d3f;--k3:#2c2748;--blob:.55;
   --shadow:0 0 0 .5px rgba(0,0,0,.6),0 26px 56px -30px #000,inset 0 1px 0 var(--edge);
   --shadow-pop:0 0 0 .5px rgba(0,0,0,.7),0 36px 90px -20px #000,inset 0 1px 0 var(--edge)}
-html{background:var(--bg);transition:background-color .4s;scroll-padding-top:88px}
-.assets-section,.storyboard-section{scroll-margin-top:96px}
+html{background:var(--bg);transition:background-color .4s;scroll-padding-top:24px}
 body{background:transparent;color:var(--ink);-webkit-font-smoothing:antialiased}
 .brand-mark{font-family:"Songti SC","STSong","SimSun","NSimSun",serif}
 .adapter-code,.model-list-field textarea{font-family:ui-monospace,"SF Mono","Cascadia Mono","Cascadia Code",Consolas,Menlo,monospace}
@@ -247,3 +246,80 @@ input[type=checkbox]:active{transform:scale(.88)}
 .voice-nav svg{width:18px;height:18px}
 .voice-nav:hover:not(:disabled),.voice-nav.active{background:color-mix(in srgb,var(--purple) 20%,transparent);border-color:var(--purple);color:var(--purple)}
 @media(max-width:900px){.voice-nav{padding:11px 0}}
+
+
+/* ===== 布局二版：去掉顶栏，只留可收起的侧栏和主区；配色收敛成中性色，强调色只用于少量提示 ===== */
+:root{--side:236px;--side-rail:68px}
+.app-shell{grid-template-columns:var(--side) minmax(0,1fr);transition:grid-template-columns .32s var(--ease-out)}
+html[data-sidebar=collapsed] .app-shell{grid-template-columns:var(--side-rail) minmax(0,1fr)}
+html[data-sidebar] .sidebar{width:var(--side);padding:18px 12px 14px;gap:0;border-right:1px solid var(--line);box-shadow:none;transition:width .32s var(--ease-out),padding .32s var(--ease-out),background-color .4s}
+html[data-sidebar=collapsed] .sidebar{width:var(--side-rail);padding:18px 10px 14px}
+.workspace{padding-top:44px}
+
+/* 品牌行 + 收起按钮 */
+html[data-sidebar] .brand{display:flex;align-items:center;gap:10px;padding:2px 6px 18px}
+html[data-sidebar] .brand-mark{width:32px;height:32px;min-width:32px;border-radius:9px;font-size:15px;box-shadow:none}
+.brand-text{min-width:0;flex:1}
+html[data-sidebar] .brand-name{display:block;font-size:16px;font-weight:650;letter-spacing:.5px;line-height:1.2}
+html[data-sidebar] .brand-caption{display:block;font-size:11px;letter-spacing:0;color:var(--faint);margin-top:2px}
+.side-toggle{width:30px;height:30px;padding:0;border:0;border-radius:8px;background:transparent;color:var(--faint);flex-shrink:0}
+.side-toggle:hover:not(:disabled){background:var(--sunk-2);color:var(--ink)}
+
+/* 导航项：统一的图标 + 文字，不加彩色边框，选中只用一层浅底 */
+.side-nav{display:grid;gap:2px;margin-bottom:18px}
+.side-item{width:100%;justify-content:flex-start;gap:11px;padding:9px 10px;border:0;border-radius:9px;background:transparent;color:var(--ink-2);font-size:13.5px;font-weight:500;text-align:left;transition:background-color .2s,color .2s,transform .18s var(--spring)}
+.side-item svg{color:var(--muted);transition:color .2s,transform .3s var(--spring)}
+.side-item:hover:not(:disabled){background:var(--sunk);border:0;color:var(--ink)}
+.side-item:hover:not(:disabled) svg{color:var(--ink)}
+.side-item.active{background:var(--sunk-2);color:var(--ink);font-weight:600}
+.side-item.active svg{color:var(--ink)}
+.side-item>span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.side-item b{font-size:11px;font-weight:500;color:var(--faint);font-variant-numeric:tabular-nums}
+.side-item em{font-style:normal;font-size:11px;color:var(--faint);white-space:nowrap}
+html[data-sidebar] .sidebar-label{display:block;padding:0 10px 8px;font-size:11px;letter-spacing:.3px;color:var(--faint)}
+html[data-sidebar] .project-list{gap:2px}
+html[data-sidebar] .project-link{padding:7px 8px;gap:10px;border-radius:9px;border:0}
+html[data-sidebar] .project-link:hover:not(.active){background:var(--sunk)!important}
+html[data-sidebar] .project-thumb{width:30px;height:30px;border-radius:7px}
+html[data-sidebar] .project-item-text{display:block}
+html[data-sidebar] .project-title{font-size:12.5px;max-width:none;color:var(--ink-2)}
+html[data-sidebar] .project-link.active .project-title{color:var(--ink);font-weight:600}
+html[data-sidebar] .project-meta{font-size:11px;margin-top:2px;color:var(--faint)}
+.nav-pill{border:0;background:var(--sunk-2);box-shadow:none}
+html[data-sidebar] .sidebar-bottom{display:grid;gap:2px;border-top:1px solid var(--line);padding-top:10px;margin-top:10px}
+html[data-sidebar] .sidebar-bottom .side-item{font-size:13px;padding:8px 10px}
+html[data-sidebar] .sidebar-bottom .side-item span{display:block}
+.side-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 6px 0}
+html[data-sidebar] .service-status{font-size:11px;gap:6px;color:var(--faint)}
+
+/* 收起：只剩图标 */
+html[data-sidebar=collapsed] .brand{flex-direction:column;gap:10px;padding:2px 0 14px}
+html[data-sidebar=collapsed] .brand-text,html[data-sidebar=collapsed] .side-item>span,html[data-sidebar=collapsed] .side-item b,html[data-sidebar=collapsed] .side-item em,html[data-sidebar=collapsed] .sidebar-label,html[data-sidebar=collapsed] .project-item-text,html[data-sidebar=collapsed] .service-status>span:last-child,html[data-sidebar=collapsed] .sidebar-bottom .side-item span{display:none}
+html[data-sidebar=collapsed] .side-item,html[data-sidebar=collapsed] .project-link{justify-content:center;padding:10px 0}
+html[data-sidebar=collapsed] .project-link{padding:7px 0}
+html[data-sidebar=collapsed] .side-nav{margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--line)}
+html[data-sidebar=collapsed] .side-foot{flex-direction:column;padding:10px 0 0;gap:10px}
+html[data-sidebar=collapsed] .theme-switch{flex-direction:column}
+@media(max-width:900px){.side-toggle{display:none}}
+.library-bulkbar{left:calc(50% + var(--side)/2)}
+html[data-sidebar=collapsed] .library-bulkbar{left:calc(50% + var(--side-rail)/2)}
+
+/* 主按钮改成中性色（白天深色、夜间浅色），橙色只留给步骤、链接这类小面积提示 */
+button.primary{background:var(--btn);color:var(--btn-ink);border-color:transparent;box-shadow:0 8px 20px -12px rgba(0,0,0,.45)}
+button.primary:hover:not(:disabled){background:var(--btn-hover);border-color:transparent;box-shadow:0 14px 28px -14px rgba(0,0,0,.5)}
+button.primary:after{background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--btn-ink) 16%,transparent),transparent)}
+button{border-radius:10px}
+button.small{border-radius:8px}
+
+/* 面板：圆角加大，边线更轻，标题字号上调一档 */
+.section-card,.voice-compose,.voice-panel,.library-toolbar,.asset-batch,.empty-panel{border-radius:18px}
+.stepper{border-radius:14px}
+.asset-card,.shot-card,.library-card{border-radius:14px}
+.modal{border-radius:20px}
+.project-heading h1{font-size:30px;font-weight:650;letter-spacing:-.01em}
+.project-heading .description{font-size:13px;color:var(--muted)}
+.eyebrow{display:none}
+.section-title h2{font-size:16px;font-weight:600}
+.section-heading h2{font-size:18px;font-weight:600}
+.section-subtitle,.section-heading p{font-size:12px;color:var(--muted)}
+@media(prefers-reduced-motion:reduce){.app-shell,html[data-sidebar] .sidebar{transition:none}}
