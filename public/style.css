@@ -337,3 +337,9 @@ html[data-sidebar=collapsed] .theme-switch button{flex:0 0 26px;width:26px;heigh
 .provider-test-result.reachable{background:var(--accent-soft);color:var(--accent-ink)}
 .provider-test-result.fail{background:var(--red-soft);color:var(--red)}
 .prepare-help .text-button{margin-left:8px}
+
+/* 未生成图片的资产卡片整张可点选 */
+.asset-card.is-pickable{cursor:pointer}
+.asset-card.is-pickable:has([data-asset-select]:checked){border-color:var(--accent-line);box-shadow:0 0 0 1.5px var(--accent-line),0 10px 26px -22px rgba(32,40,48,.35)}
+.asset-card.is-pickable:has([data-asset-select]:not(:checked)) .asset-visual{opacity:.6}
+.asset-choice input{width:18px;height:18px}
