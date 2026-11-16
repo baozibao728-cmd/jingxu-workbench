@@ -397,3 +397,5 @@ html[data-sidebar=open] .side-foot{padding:12px 8px 0}
 .provider-icon-picker button .provider-card-icon{width:28px;height:28px;border-radius:8px;font-size:13px}
 .provider-icon-picker button .provider-card-icon svg{width:17px;height:17px}
 .provider-icon-picker button[aria-pressed=true]{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink);color:var(--ink)}
+
+.provider-card-icon svg{fill:currentColor}
