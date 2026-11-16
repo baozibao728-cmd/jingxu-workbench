@@ -116,13 +116,16 @@ body{background:transparent;color:var(--ink);-webkit-font-smoothing:antialiased}
 .brand-mark{font-family:"Songti SC","STSong","SimSun","NSimSun",serif}
 .adapter-code,.model-list-field textarea{font-family:ui-monospace,"SF Mono","Cascadia Mono","Cascadia Code",Consolas,Menlo,monospace}
 
-/* 背景光斑：给毛玻璃一点可透的颜色 */
+/* 背景光斑：动态背景画不出来时的兜底 */
 .sky{position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none;background:var(--bg);transition:background-color .4s}
-.sky i{position:absolute;width:56vmax;height:56vmax;border-radius:50%;filter:blur(90px);opacity:var(--blob);transition:background-color .4s,opacity .4s;animation:sky-drift 30s ease-in-out infinite alternate;will-change:transform}
+.sky i{position:absolute;width:56vmax;height:56vmax;border-radius:50%;filter:blur(90px);opacity:var(--blob);transition:background-color .4s,opacity .4s;}
 .sky i:nth-child(1){background-color:var(--k1);left:-16vmax;top:-24vmax}
-.sky i:nth-child(2){background-color:var(--k2);right:-20vmax;top:8vh;animation-duration:38s;animation-delay:-9s}
-.sky i:nth-child(3){background-color:var(--k3);left:22vw;bottom:-36vmax;animation-duration:45s;animation-delay:-4s}
-@keyframes sky-drift{to{transform:translate3d(8vmax,6vmax,0) scale(1.15)}}
+.sky i:nth-child(2){background-color:var(--k2);right:-20vmax;top:8vh}
+.sky i:nth-child(3){background-color:var(--k3);left:22vw;bottom:-36vmax}
+/* 动态背景画布（backdrop.js）。画布不可用时露出下面的光斑 */
+#galaxy,#space,#skySnap{position:absolute;inset:0;width:100%;height:100%;transition:opacity .28s}
+#skySnap{opacity:0;pointer-events:none}
+#space{opacity:0}
 
 /* 切换主题的 0.4 秒内，所有元素用同一条过渡，卡片、文字和背景一起变 */
 html.theme-switching *,html.theme-switching *:before,html.theme-switching *:after{transition:background-color .4s,border-color .4s,color .4s,box-shadow .4s,fill .4s,stroke .4s!important}
@@ -193,7 +196,7 @@ button:has(>.spin){cursor:progress;animation:busy-pulse 1.6s ease-in-out infinit
 }
 /* Windows 高对比度模式：交给系统配色 */
 @media(forced-colors:active){.sky{display:none}.sidebar,.topbar,.section-card,.modal{-webkit-backdrop-filter:none;backdrop-filter:none}button,input,select,textarea,.section-card,.asset-card,.shot-card,.modal{border:1px solid CanvasText}}
-@media(prefers-reduced-motion:reduce){.sky i{animation:none}html.theme-switching *,html.theme-switching *:before,html.theme-switching *:after{transition:none!important}button.primary:after{display:none}button:has(>.spin){animation:none}}
+@media(prefers-reduced-motion:reduce){html.theme-switching *,html.theme-switching *:before,html.theme-switching *:after{transition:none!important}button.primary:after{display:none}button:has(>.spin){animation:none}}
 /* 窄窗口：侧栏收成图标栏时，剧本库和语音工作台只留图标；顶栏给主题切换让出位置 */
 @media(max-width:900px){.library-nav,.voice-nav{justify-content:center;padding:11px 0;min-height:44px}.library-nav span,.voice-nav span,.library-nav b{display:none}}
 @media(max-width:600px){.theme-switch button{width:25px;height:25px}.topbar{gap:8px}.breadcrumb>span:first-child,.breadcrumb>svg{display:none}.service-status{font-size:0}.concurrency-mini{display:none}}

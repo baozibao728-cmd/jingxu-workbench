@@ -255,3 +255,4 @@ npm start
 - `public/style.css` 里不再写死颜色。所有颜色都是变量，两套取值在文件末尾的“主题层”里（`:root` 和 `:root[data-theme=dark]`）。新增样式请直接用这些变量，例如 `--ink`、`--muted`、`--paper`、`--sunk`、`--line`、`--accent`。
 - 毛玻璃只加在大块面板上（侧栏、顶栏、分区卡片、弹窗遮罩、浮动条）。素材卡、分镜卡这类数量多的卡片只用半透明底色，不加模糊，避免滚动掉帧。
 - 不支持 `backdrop-filter` 的浏览器会通过 `@supports` 退回不透明底色。
+- 动态背景在 `public/backdrop.js`：夜间是宇宙（WebGL 着色器），白天是线描星轨，移植自「Claude 会话同步」面板。没有 WebGL 时退回 2D 画布，再不行露出 CSS 光斑。这个文件已加进 `src/server.js` 的静态白名单。

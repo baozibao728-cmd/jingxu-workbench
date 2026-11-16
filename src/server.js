@@ -203,7 +203,7 @@ export async function createApplication({ root = join(applicationRoot, 'data', '
       if (segments[0] === 'voice-media' && segments.length === 2 && ['GET', 'HEAD'].includes(request.method)) return await streamFile(request, response, voiceStore.file(segments[1]));
       if (!['GET', 'HEAD'].includes(request.method)) return send(response, 405, { error: '不支持的请求方法' });
       const filename = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
-      if (!['index.html', 'app.js', 'model-options.js', 'settings-ui.js', 'image-viewer.js', 'mentions.js', 'style.css'].includes(filename)) return send(response, 404, { error: '页面不存在' });
+      if (!['index.html', 'app.js', 'model-options.js', 'settings-ui.js', 'image-viewer.js', 'mentions.js', 'backdrop.js', 'style.css'].includes(filename)) return send(response, 404, { error: '页面不存在' });
       return await streamFile(request, response, join(publicRoot, filename));
     } catch (error) {
       if (!response.headersSent) send(response, error.status || (error.code === 'ENOENT' ? 404 : 400), { error: error.code === 'ENOENT' ? '文件不存在' : workflow.errorText(error) });

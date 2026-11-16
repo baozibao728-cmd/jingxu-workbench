@@ -9,11 +9,12 @@
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <div class="sky" aria-hidden="true"><i></i><i></i><i></i></div>
+  <div class="sky" aria-hidden="true"><i></i><i></i><i></i><canvas id="space"></canvas><canvas id="galaxy"></canvas></div>
   <div id="app"><div class="initial-loading"><span class="brand-mark">镜</span><p>正在打开工作台…</p></div></div>
   <div id="modal-root"></div>
   <div id="toast" role="status" aria-live="polite"></div>
   <input id="asset-file" type="file" accept="image/png,image/jpeg,image/webp" hidden>
   <script type="module" src="/app.js"></script>
+  <script src="/backdrop.js" defer></script>
 </body>
 </html>
