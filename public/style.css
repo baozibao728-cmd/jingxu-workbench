@@ -360,3 +360,25 @@ html[data-sidebar=collapsed] .theme-switch{grid-auto-flow:row}
 .theme-switch button,html[data-sidebar=collapsed] .theme-switch button,.sidebar-bottom .theme-switch button{display:grid;place-items:center;width:28px;height:28px;min-width:0;min-height:0;flex:none;margin:0;padding:0;gap:0;line-height:0;font-size:0;border:0;border-radius:50%;justify-content:center}
 .theme-switch button,.theme-switch button:hover:not(:disabled),.theme-switch button:active:not(:disabled){transform:none;box-shadow:none}
 .theme-switch button svg{display:block;width:15px;height:15px;margin:0;flex:none}
+
+/* 品牌区：图形标志 + 字标，不带副标题 */
+.brand-logo{width:30px;height:30px;flex:none;display:block;overflow:visible}
+.brand-logo-back{fill:var(--accent)}
+.brand-logo-front{fill:var(--ink);stroke:var(--bg);stroke-width:1.6;paint-order:stroke;stroke-linejoin:round}
+.initial-loading .brand-logo{width:44px;height:44px}
+html[data-sidebar] .brand{gap:11px;padding:4px 8px 24px;min-height:38px}
+html[data-sidebar] .brand-name{font-size:19px;font-weight:700;letter-spacing:.16em;line-height:1;color:var(--ink)}
+html[data-sidebar=collapsed] .brand{padding:4px 0 16px;gap:12px}
+/* 侧栏排版：字号、行高和分组间距放开 */
+html[data-sidebar=open] .sidebar{padding:22px 14px 16px}
+html[data-sidebar=open] .side-nav{gap:4px;margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--line)}
+html[data-sidebar=open] .side-item{font-size:15px;padding:11px 12px;gap:14px;border-radius:11px}
+html[data-sidebar=open] .side-item b{font-size:12px}
+html[data-sidebar=open] .sidebar-label{padding:2px 12px 10px;font-size:12px;letter-spacing:.02em}
+html[data-sidebar=open] .project-link{padding:8px 12px;gap:12px;border-radius:11px}
+html[data-sidebar=open] .project-title{font-size:13.5px}
+html[data-sidebar=open] .project-meta{font-size:11.5px;margin-top:3px}
+html[data-sidebar=open] .sidebar-bottom{gap:2px}
+html[data-sidebar=open] .sidebar-bottom .side-item{font-size:14px;padding:10px 12px}
+html[data-sidebar=open] .side-item em{font-size:12px}
+html[data-sidebar=open] .side-foot{padding:12px 8px 0}
