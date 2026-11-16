@@ -323,3 +323,17 @@ button.small{border-radius:8px}
 .section-heading h2{font-size:18px;font-weight:600}
 .section-subtitle,.section-heading p{font-size:12px;color:var(--muted)}
 @media(prefers-reduced-motion:reduce){.app-shell,html[data-sidebar] .sidebar{transition:none}}
+
+/* 修补：收起侧栏的主题切换、任务记录字号、厂商测试结果 */
+html[data-sidebar=collapsed] .theme-switch{flex-direction:column;align-items:center;width:34px;padding:3px;gap:2px}
+html[data-sidebar=collapsed] .theme-switch button{flex:0 0 26px;width:26px;height:26px;min-width:0;min-height:0;margin:0}
+.log-item{font-size:13px;line-height:1.7;grid-template-columns:44px 8px minmax(0,1fr)}
+.log-item time{font-size:11px;padding-top:3px}
+.log-item .dot{margin-top:8px}
+.provider-card{flex-wrap:wrap}
+.provider-test-result{flex:0 0 100%;margin:2px 0 0;padding:9px 12px;border-radius:10px;background:var(--sunk);color:var(--muted);font-size:12px;line-height:1.6}
+.provider-test-result[hidden]{display:none}
+.provider-test-result.ok{background:var(--green-soft);color:var(--green)}
+.provider-test-result.reachable{background:var(--accent-soft);color:var(--accent-ink)}
+.provider-test-result.fail{background:var(--red-soft);color:var(--red)}
+.prepare-help .text-button{margin-left:8px}

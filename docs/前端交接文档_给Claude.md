@@ -258,3 +258,10 @@ npm start
 - 动态背景在 `public/backdrop.js`：夜间是宇宙（WebGL 着色器），白天是线描星轨，移植自「Claude 会话同步」面板。没有 WebGL 时退回 2D 画布，再不行露出 CSS 光斑。这个文件已加进 `src/server.js` 的静态白名单。
 - 顶栏已去掉。并发设置、接口设置、任务记录、主题切换和连接状态都在侧栏底部。侧栏可收起成图标栏（`toggleSidebar()`，记在 localStorage 的 `drama-sidebar`），窗口窄于 900px 时固定收起。
 - 主按钮（`button.primary`）是中性色：白天深色、夜间浅色。橙色 `--accent` 只用于步骤、链接等小面积提示。
+
+## 11. 解析容错、剧本改动与连接测试
+
+- 分镜解析（`generateStoryboards`）：输出被截断时自动把该段对半拆开继续；某段没返回分镜或引用写错时同一段自动重试，最多共 3 次。单条重新拆分（`rebuildShot`）在 AI 返回内容不合格时同样最多试 3 次，接口本身报错不重试。
+- 图片引用除了 key，也认素材名称和内部编号（`referenceKeys`）。
+- 已有资产图时修改剧本：不再要求另建项目。主按钮变成“按新剧本重新解析分镜”，资产图原样保留；解析完成后清除 `sourceChanged`。“另建项目重新提取资产”保留为旁边的文字按钮。项目标题旁的“复制为新项目”图标已去掉。
+- 厂商连接测试：`POST /api/provider-profiles/:id/test`，实现在 `src/provider-test.js`。文本发一次 `max_tokens:16` 的对话；生图和视频只发 GET（`/v1/models`、菲阳的 `/caps`、任务查询），不提交生成。结果分 `ok` / `reachable` / `fail` 三档，不回显 Key 和上游响应。

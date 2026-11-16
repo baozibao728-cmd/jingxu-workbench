@@ -18,7 +18,7 @@ function normalizeReparseChunks(chunks){
 }
 export function reparseSummary(record){if(!record)return undefined;const {draft,...summary}=record;return {...summary,generated: draft?.shots.length??record.generated??0,completed:draft?.chunks.filter(c=>c.storyboardState==='completed'||c.referenceOnly).length??record.completed??0,total:draft?.chunks.length??record.total??0,canResume:record.state==='failed'&&!!draft};}
 export async function startStoryboardReparse(workflow,id,input={}){
- const project=workflow.store.get(id);workflow.assertEditable(project);
+ const project=workflow.store.get(id);workflow.assertEditable(project,{allowSourceChanged:true});
  if(jobActive(project.mergeJob))throw Error('整集正在合成，请完成后再重新解析');
  if(project.shots.some(s=>s.job?.state==='unknown'||(s.job?.taskId&&s.job.state!=='completed'&&!s.video)))throw Error('有视频任务结果未知或尚未接收，请先查询完成再全部重新解析');
  if(!project.script.trim())throw Error('请先填写剧本');
@@ -46,7 +46,7 @@ export async function startStoryboardReparse(workflow,id,input={}){
  workflow.store.log(project,'开始全部重新解析分镜，复用已有图片；仅生成文字，不自动生成视频。');await workflow.store.save(project);
  await workflow.launch(`reparse:${id}`,async()=>{
   try{
-   const work={id:project.id,title:project.title,script:project.script,style:project.style,aspectRatio:project.aspectRatio,ruleNotes:[project.ruleNotes,record.notes&&`本次全部重解析要求：${record.notes}`].filter(Boolean).join('\n'),clipDuration:record.duration,resolution:record.resolution,assets:structuredClone(project.assets),shots:record.draft.shots,chunks:record.draft.chunks,storyboardPrompts:record.draft.storyboardPrompts,revision:project.revision,preparation:{state:'running'},logs:[]};
+   const work={id:project.id,title:project.title,script:project.script,style:project.style,aspectRatio:project.aspectRatio,ruleNotes:[project.ruleNotes,record.notes&&`本次全部重解析要求：${record.notes}`].filter(Boolean).join('\n'),clipDuration:record.duration,resolution:record.resolution,assets:structuredClone(project.assets),shots:record.draft.shots,chunks:record.draft.chunks,storyboardPrompts:record.draft.storyboardPrompts,revision:project.revision,preparation:{state:'running'},logs:[],logTarget:project};
    await workflow.generateStoryboards(work,{promptRules:record.draft.storyboardPrompts,checkpoint:async()=>{
     record.draft={shots:work.shots,chunks:work.chunks,storyboardPrompts:work.storyboardPrompts};
     const completed=work.chunks.filter(c=>c.referenceOnly||c.storyboardState==='completed').length;
@@ -56,7 +56,7 @@ export async function startStoryboardReparse(workflow,id,input={}){
    if(sourceHash(project)!==record.sourceHash)throw Error('解析期间剧本或素材已变化，旧分镜保留，请从头重试');
    if(!work.shots.length||work.chunks.some(c=>!c.referenceOnly&&c.storyboardState!=='completed'))throw Error('全部分镜尚未解析完成，旧分镜保留');
    (project.storyboardHistory||=[]).push({at:now(),reason:'全部重新解析分镜',originals:structuredClone(project.shots),chunks:structuredClone(project.chunks||[]),mergedVideo:structuredClone(project.mergedVideo),storyboardPrompts:structuredClone(project.storyboardPrompts),clipDuration:project.clipDuration,resolution:project.resolution});
-   project.shots=work.shots;project.chunks=work.chunks;project.storyboardPrompts=work.storyboardPrompts;project.clipDuration=record.duration;project.resolution=record.resolution;delete project.mergedVideo;renumberSegments(project);project.revision++;
+   project.shots=work.shots;project.chunks=work.chunks;project.storyboardPrompts=work.storyboardPrompts;project.clipDuration=record.duration;project.resolution=record.resolution;delete project.mergedVideo;delete project.sourceChanged;renumberSegments(project);project.revision++;
    record.state='completed';record.finishedAt=now();record.generated=work.shots.length;record.completed=work.chunks.length;record.total=work.chunks.length;delete record.draft;
    project.preparation={state:'completed',phase:'review',stage:`全部重新解析完成，共${project.shots.length}条，等待你检查后生成视频`,completed:work.chunks.length,total:work.chunks.length};workflow.store.log(project,`全部重解析完成：${project.shots.length}条分镜；旧版本与成片保留，没有提交图片或视频。`);
   }catch(error){record.state='failed';record.error=workflow.errorText(error);project.preparation={...project.preparation,state:'failed',phase:'reparse-storyboards',error:record.error};workflow.store.log(project,`全部重新解析中断：${record.error}。旧分镜保留，可继续未完成的段落。`,'error');}

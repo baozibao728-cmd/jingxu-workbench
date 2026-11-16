@@ -15,6 +15,7 @@ import { PromptSettings } from './prompt-settings.js';
 import { ConcurrencySettings } from './concurrency.js';
 import { ProviderSettings, safeProvider } from './provider-settings.js';
 import { createProvider } from './custom-providers.js';
+import { testProvider } from './provider-test.js';
 import { UpdateManager } from './update-manager.js';
 import { spawn } from 'node:child_process';
 import { MiniMaxTTSProvider } from './minimax-tts.js';
@@ -133,6 +134,8 @@ export async function createApplication({ root = join(applicationRoot, 'data', '
           return send(response, 201, workflow.view(await store.create({ ...input, videoProviderId: input.videoProviderId || config.fydmai.id, clipDuration: input.clipDuration ?? profile.defaultDuration, resolution: input.resolution ?? profile.defaultResolution })));
         }
         if (url.pathname === '/api/provider-profiles' && request.method === 'GET') return send(response,200,providers.view());
+        const providerTest = url.pathname.match(/^\/api\/provider-profiles\/([^/]+)\/test$/);
+        if (providerTest && request.method === 'POST') return send(response, 200, await testProvider(providers.byId(decodeURIComponent(providerTest[1]))));
         if (url.pathname === '/api/settings' && request.method === 'POST') {
           if(busy())throw new Error('有任务运行中，请完成后再切换厂商，避免原任务连接改变');
           const input=await body(request);
