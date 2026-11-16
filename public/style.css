@@ -426,3 +426,9 @@ html[data-sidebar=open] .side-foot{padding:12px 8px 0}
 .mini-switch.on:after{transform:translateX(12px)}
 html[data-sidebar=collapsed] .mini-switch{display:none}
 html[data-sidebar=collapsed] .side-item.is-on svg{color:var(--accent)}
+
+/* 拖图片到资产卡片上替换 */
+.asset-drop-cover{position:absolute;inset:0;z-index:3;display:none;flex-direction:column;align-items:center;justify-content:center;gap:8px;background:color-mix(in srgb,var(--accent) 22%,var(--paper));color:var(--accent-ink);font-size:13px;font-weight:600;pointer-events:none}
+.asset-card.is-dragging .asset-drop-cover{display:flex}
+.asset-card.is-dragging{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-line)}
+.asset-card.is-dragging *{pointer-events:none}
