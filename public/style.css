@@ -418,3 +418,11 @@ html[data-sidebar=open] .side-foot{padding:12px 8px 0}
 .brand-logo-prev{fill:var(--ink);opacity:.35}
 .brand-logo-now{fill:var(--ink)}
 .brand-logo-next{fill:var(--accent)}
+
+/* 左下角“静态背景”开关 */
+.mini-switch{flex:none;position:relative;width:30px;height:18px;border-radius:999px;background:var(--sunk-3);transition:background-color .2s}
+.mini-switch:after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--knob,#fff);box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .2s var(--spring)}
+.mini-switch.on{background:var(--accent)}
+.mini-switch.on:after{transform:translateX(12px)}
+html[data-sidebar=collapsed] .mini-switch{display:none}
+html[data-sidebar=collapsed] .side-item.is-on svg{color:var(--accent)}

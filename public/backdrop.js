@@ -4,7 +4,10 @@
 (()=>{
 const $=id=>document.getElementById(id);
 if(!$('space')||!$('galaxy'))return;
-const calm=matchMedia('(prefers-reduced-motion: reduce)').matches;
+// calm：背景只画一帧不再动。系统开了“减少动态效果”，或用户在左下角开了“静态背景”。
+const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+let still=false;try{still=localStorage.getItem('drama-backdrop')==='static'}catch(e){}
+let calm=reduced||still;
 // 深色背景（GPU 着色器）：流体般的星云、三层视差星空、带大气层的行星、流星，鼠标附近有引力透镜般的扭曲
 const SPACE=(()=>{
   const c=$('space'),gl=c&&c.getContext('webgl',{antialias:false,alpha:false,depth:false,powerPreference:'high-performance'});
@@ -471,6 +474,7 @@ void main(){if(uDay>.5)dayMain();else nightMain();}
   }
   let rt=0;addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(()=>{build();if(calm)frame(performance.now())},120)});
   document.addEventListener('visibilitychange',sync);
+  window.setBackdropStatic=value=>{calm=reduced||!!value;if(raf)cancelAnimationFrame(raf);raf=0;sync()};
   // 换主题：先把旧背景拍一张快照盖在上面，新背景立刻在下面画好，快照和卡片颜色用同样的 0.35 秒一起淡出
   const snap=document.createElement('canvas');snap.id='skySnap';cv.parentNode.appendChild(snap);
   const sc=snap.getContext('2d');let snapT=0;
