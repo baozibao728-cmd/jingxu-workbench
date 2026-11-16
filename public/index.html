@@ -5,9 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f6f5f2">
   <title>镜序 · 短剧工作台</title>
+  <script>(function(){var t='system';try{t=localStorage.getItem('drama-theme')||'system'}catch(e){}document.documentElement.dataset.theme=t==='system'?(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'):t==='dark'?'dark':'light'})()</script>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+  <div class="sky" aria-hidden="true"><i></i><i></i><i></i></div>
   <div id="app"><div class="initial-loading"><span class="brand-mark">镜</span><p>正在打开工作台…</p></div></div>
   <div id="modal-root"></div>
   <div id="toast" role="status" aria-live="polite"></div>

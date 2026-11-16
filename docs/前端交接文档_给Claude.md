@@ -247,3 +247,11 @@ npm start
 - 现有本机 Key、用户项目、图片、视频、音频和历史记录都属于用户数据。
 - 不要打印 Key，不要将 Key 复制到文档、截图、提交信息或远程仓库。
 - 当前本机版本为1.2.6，GitHub Release未同步本机最近的所有版本，修改后先保留本地可运行状态，再单独处理发布。
+
+## 10. 主题和毛玻璃（2026-11-15 新增）
+
+- 顶栏右侧有三档主题切换：白天、跟随系统、夜间。选择记在 localStorage 的 `drama-theme`，默认跟随系统。
+- `public/index.html` 头部的内联脚本在样式加载前设置 `<html data-theme>`，避免闪白。`public/app.js` 的 `applyTheme()`、`setTheme()`、`themeSwitch()` 负责切换和渲染按钮。
+- `public/style.css` 里不再写死颜色。所有颜色都是变量，两套取值在文件末尾的“主题层”里（`:root` 和 `:root[data-theme=dark]`）。新增样式请直接用这些变量，例如 `--ink`、`--muted`、`--paper`、`--sunk`、`--line`、`--accent`。
+- 毛玻璃只加在大块面板上（侧栏、顶栏、分区卡片、弹窗遮罩、浮动条）。素材卡、分镜卡这类数量多的卡片只用半透明底色，不加模糊，避免滚动掉帧。
+- 不支持 `backdrop-filter` 的浏览器会通过 `@supports` 退回不透明底色。
