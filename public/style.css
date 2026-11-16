@@ -406,3 +406,10 @@ html[data-sidebar=open] .side-foot{padding:12px 8px 0}
 .library-toolbar .small{gap:6px}
 .library-card .library-card-check{opacity:.55;transition:opacity .2s}
 .library-card:hover .library-card-check,.library-card.selected .library-card-check,.library-card-check:focus-within{opacity:1}
+
+/* 剧本库选择模式：点“选择”后整张卡片可点选，不用小勾选框 */
+.library-card-mark{position:absolute;z-index:2;top:12px;left:12px;width:20px;height:20px;border-radius:50%;border:1.5px solid var(--line-2);background:var(--field);display:grid;place-items:center;color:var(--on);pointer-events:none}
+.library-card.selected .library-card-mark{background:var(--accent);border-color:var(--accent)}
+.library-card.picking:not(.selected){opacity:.72}
+.library-card.picking .library-card-arrow{visibility:hidden}
+.library-pick-toggle.active,.library-pick-toggle.active:hover:not(:disabled){background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent-ink)}
