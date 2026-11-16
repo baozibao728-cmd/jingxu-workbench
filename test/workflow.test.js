@@ -145,6 +145,28 @@ test('项目可以选择已配置的视频渠道，并把渠道固定到新的�
   } finally { await f.cleanup(); }
 });
 
+test('一个视频厂商方案的每个模型都能在项目里单独选，提交快照记下所选模型', async () => {
+  const f = await fixture();
+  try {
+    const current = f.workflow.config().fydmai, models = [{ id: 'seedance-2.5-cc', label: 'Seedance 2.5' }, { id: 'seedance-2.5-flash-cc', label: 'Seedance 2.5 Flash' }];
+    const alt = { ...current, id: 'video-alt', protocol: 'openai-video', model: 'seedance-2.5-cc', models, capabilities: { minDuration: 4, maxDuration: 30, defaultDuration: 15, resolutions: ['720p'], defaultResolution: '720p', maxReference: 10 } };
+    f.workflow.getProviderProfiles = () => ({ profiles: [{ id: 'video-alt', service: 'fydmai', name: '萤漫', model: alt.model, models, baseUrl: alt.baseUrl, configured: true }] });
+    f.workflow.getProviderById = id => id === 'video-alt' ? alt : current;
+    const channels = f.workflow.videoChannels();
+    assert.deepEqual(channels.map(c => c.value), ['video-alt::seedance-2.5-cc', 'video-alt::seedance-2.5-flash-cc']);
+    assert.match(channels[1].label, /Seedance 2.5 Flash/);
+    await assert.rejects(f.workflow.updateProject(f.project.id, { videoProviderId: 'video-alt', videoModel: 'not-listed' }), /模型列表/);
+    await f.workflow.updateProject(f.project.id, { videoProviderId: 'video-alt', videoModel: 'seedance-2.5-flash-cc', clipDuration: 15, resolution: '720p' });
+    assert.equal(f.workflow.view(f.project).videoModel, 'seedance-2.5-flash-cc');
+    assert.equal(f.workflow.videoConfigForProject(f.project).model, 'seedance-2.5-flash-cc');
+    assert.equal(alt.model, 'seedance-2.5-cc');
+    assert.equal(f.workflow.videoConfig({ providerId: 'video-alt', model: 'seedance-2.5-flash-cc' }).model, 'seedance-2.5-flash-cc');
+    assert.equal(f.workflow.videoConfig({ providerId: 'video-alt' }).model, 'seedance-2.5-cc');
+    await f.workflow.updateProject(f.project.id, { videoProviderId: 'video-alt', videoModel: '' });
+    assert.equal(f.workflow.view(f.project).videoModel, 'seedance-2.5-cc');
+  } finally { await f.cleanup(); }
+});
+
 test('视频服务明确失败时，项目开关会自动重提且最多重试两次', async () => {
   const f = await fixture();
   try {

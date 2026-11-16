@@ -67,10 +67,19 @@ export class Workflow {
   }
   concurrency() { return { images: this.imagePool.stats(), videos: this.videoPool.stats() }; }
   config() { return this.getConfig(); }
-  videoConfigForProject(project) { const id = project?.videoProviderId; return id && this.getProviderById ? this.getProviderById(id) : this.config().fydmai; }
+  // 项目可以在厂商方案的模型列表里单独选一个模型（project.videoModel）；没选或已不在列表里就用方案当前的模型。
+  videoConfigForProject(project) {
+    const id = project?.videoProviderId, config = id && this.getProviderById ? this.getProviderById(id) : this.config().fydmai;
+    const model = project?.videoModel;
+    return model && model !== config.model && array(config.models).some(item => item?.id === model) ? { ...config, model } : config;
+  }
   videoProfile(project) { const config=this.videoConfigForProject(project); const current=this.config().fydmai; const capabilities=(config.protocol==='json'||config.protocol==='openai-video')?{models:[{kind:'video',model:config.model,...config.capabilities}]}:(config.id===current.id ? this.getCapabilities() : null); return videoProfile(config.model, capabilities); }
   videoChannels() {
-    const configured = (this.getProviderProfiles()?.profiles || []).filter(profile => profile.service === 'fydmai' && profile.configured && !profile.archived).map(profile => ({ id: profile.id, name: profile.name, model: profile.model, baseUrl: profile.baseUrl }));
+    // 每个已配置的视频方案按它的模型列表展开：一个方案填了几个模型，这里就有几项可选。
+    const configured = (this.getProviderProfiles()?.profiles || []).filter(profile => profile.service === 'fydmai' && profile.configured && !profile.archived).flatMap(profile => {
+      const models = array(profile.models).filter(item => item?.id), list = models.some(item => item.id === profile.model) ? models : [{ id: profile.model, label: profile.model }, ...models];
+      return list.map(item => ({ id: profile.id, name: profile.name, model: item.id, modelLabel: item.label && item.label !== item.id ? item.label : '', baseUrl: profile.baseUrl, value: `${profile.id}::${item.id}` }));
+    });
     if (configured.length || !this.config().fydmai?.id) {
       const counts = new Map();
       for (const channel of configured) {
@@ -81,13 +90,19 @@ export class Workflow {
       return configured.map(channel => {
         const key = `${channel.name}|${channel.model}|${channel.baseUrl}`;
         const number = (seen.set(key, (seen.get(key) || 0) + 1), seen.get(key));
-        return { ...channel, label: counts.get(key) > 1 ? `${channel.name} · ${channel.model} · 方案${number}` : `${channel.name} · ${channel.model}` };
+        const title = `${channel.name} · ${channel.modelLabel ? `${channel.modelLabel}（${channel.model}）` : channel.model}`;
+        return { ...channel, label: counts.get(key) > 1 ? `${title} · 方案${number}` : title };
       });
     }
     const current = this.config().fydmai;
-    return current.apiKey ? [{ id: current.id, name: current.name || '当前视频渠道', model: current.model, baseUrl: current.baseUrl, label: `${current.name || '当前视频渠道'} · ${current.model}` }] : [];
+    return current.apiKey ? [{ id: current.id, value: `${current.id}::${current.model}`, name: current.name || '当前视频渠道', model: current.model, baseUrl: current.baseUrl, label: `${current.name || '当前视频渠道'} · ${current.model}` }] : [];
   }
-  videoConfig(snapshot) { return snapshot?.providerId && this.getProviderById ? this.getProviderById(snapshot.providerId) : this.config().fydmai; }
+  // 已确认的任务按快照里记下的模型提交和查询，不受之后改选的影响。
+  videoConfig(snapshot) {
+    if (!snapshot?.providerId || !this.getProviderById) return this.config().fydmai;
+    const config = this.getProviderById(snapshot.providerId);
+    return snapshot.model && snapshot.model !== config.model ? { ...config, model: snapshot.model } : config;
+  }
   videoTag(slot,config=this.config().fydmai) { return (config.protocol==='json'||config.protocol==='openai-video')?referenceTag(config,slot):fydmaiFilenameTag(slot); }
   resolution(project) { return project.resolution || this.videoProfile(project).defaultResolution; }
   async checkVideoAvailability(project) {
@@ -169,6 +184,7 @@ export class Workflow {
     if (copy.storyboardReparse) copy.storyboardReparse = reparseSummary(project.storyboardReparse);
     copy.videoProfile = this.videoProfile(project);
     copy.videoProviderId = project.videoProviderId || this.config().fydmai.id;
+    copy.videoModel = this.videoConfigForProject(project).model;
     copy.videoChannels = this.videoChannels();
     copy.autoRetryVideo = project.autoRetryVideo === true;
     copy.resolution = this.resolution(project);
@@ -201,6 +217,7 @@ export class Workflow {
     if (input.autoVoice !== undefined && typeof input.autoVoice !== 'boolean') fail('自动生成角色音频必须为开关值');
     if (input.autoRetryVideo !== undefined && typeof input.autoRetryVideo !== 'boolean') fail('失败自动重试必须为开关值');
     if (input.videoProviderId && (!this.getProviderById || !this.videoChannels().some(profile => profile.id === input.videoProviderId))) fail('请选择设置中已配置的视频渠道');
+    if (input.videoModel !== undefined && input.videoModel !== '' && input.videoProviderId && !this.videoChannels().some(channel => channel.id === input.videoProviderId && channel.model === input.videoModel)) fail('这个视频渠道的模型列表里没有所选模型');
     if (input.aspectRatio && !['16:9', '9:16', '1:1'].includes(input.aspectRatio)) fail('请选择支持的画面比例');
     validateVideoSettings(input?.videoProviderId ? this.videoProfile(input) : this.videoProfile(), input.clipDuration, input.resolution);
   }
@@ -209,7 +226,8 @@ export class Workflow {
     if (typeof input.script === 'string' && input.script.length > 100000) fail('单个项目支持10万字以内的剧本，请按集拆分');
     if (jobActive(project.preparation) && (Object.keys(input).some(key => key !== 'skipReview') || input.skipReview !== false)) fail('正在处理，请本轮完成后再修改设置；可以关闭全自动', 409);
     if(project.shots.some(shot=>jobActive(shot.rebuildJob)) && (Object.keys(input).some(key=>key!=='skipReview')||input.skipReview!==false)) fail('AI正在重新拆分，请完成后再修改剧本设置',409);
-    if (input.videoProviderId !== undefined && input.videoProviderId !== project.videoProviderId && project.shots.some(shot => jobActive(shot.job))) fail('已有视频任务正在运行，请完成后再切换视频渠道', 409);
+    const modelChanged = input.videoModel ? input.videoModel !== this.videoConfigForProject(project).model : input.videoModel === '' && project.videoModel !== undefined;
+    if (((input.videoProviderId !== undefined && input.videoProviderId !== project.videoProviderId) || modelChanged) && project.shots.some(shot => jobActive(shot.job))) fail('已有视频任务正在运行，请完成后再切换视频渠道', 409);
     this.validateSettings(input);
     const sourceChanged = ['script', 'style', 'aspectRatio', 'ruleNotes'].some(key => input[key] !== undefined && input[key] !== project[key]);
     for (const key of ['title', 'script', 'style', 'ruleNotes']) if (input[key] !== undefined) project[key] = clean(input[key], key === 'script' ? 100000 : key === 'title' ? 80 : 6000);
@@ -219,7 +237,8 @@ export class Workflow {
     if (input.characterPencil !== undefined) project.characterPencil = input.characterPencil;
     if (input.autoVoice !== undefined) project.autoVoice = input.autoVoice;
     if (input.autoRetryVideo !== undefined) project.autoRetryVideo = input.autoRetryVideo;
-    if (input.videoProviderId !== undefined) project.videoProviderId = String(input.videoProviderId);
+    if (input.videoProviderId !== undefined) { if (input.videoProviderId !== project.videoProviderId && input.videoModel === undefined) delete project.videoModel; project.videoProviderId = String(input.videoProviderId); }
+    if (input.videoModel !== undefined) { if (input.videoModel) project.videoModel = String(input.videoModel); else delete project.videoModel; }
     if (input.skipReview !== undefined) {
       project.skipReview = input.skipReview;
       this.store.log(project, input.skipReview ? '已开启跳过人工检查。点击开始后自动衔接资产、分镜与视频。' : '已关闭跳过人工检查，停止自动衔接；已提交的任务继续查询。');
