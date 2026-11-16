@@ -88,7 +88,7 @@
   --blue:#3477ab;--blue-soft:rgba(52,119,171,.1);--blue-line:rgba(52,119,171,.26);
   --purple:#6c4fc2;--purple-soft:rgba(108,79,194,.09);--purple-line:rgba(108,79,194,.24);
   --dark:#2b333a;--chip:rgba(255,255,255,.9);--knob:#fff;--overlay:rgba(30,36,42,.32);
-  --k1:#efc7b3;--k2:#e9e5d6;--k3:#cdcfe2;--blob:.75;
+  --k1:#efc7b3;--k2:#e9e5d6;--k3:#cdcfe2;--blob:.75;--veil:transparent;
   --shadow:0 0 0 .5px rgba(32,34,30,.03),0 18px 44px -28px rgba(32,40,48,.28),inset 0 1px 0 var(--edge);
   --shadow-pop:0 0 0 .5px rgba(32,34,30,.05),0 30px 80px -24px rgba(20,28,36,.42),inset 0 1px 0 var(--edge);
   --blur:blur(26px) saturate(170%);
@@ -96,9 +96,9 @@
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI Variable Text","Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei UI","Microsoft YaHei","Noto Sans CJK SC",sans-serif;
   background:var(--bg);-webkit-text-size-adjust:100%;text-size-adjust:100%}
 :root[data-theme=dark]{color-scheme:dark;
-  --bg:#0d0e10;--ink:#f3f2ee;--ink-2:#cdcdc8;--muted:#a2a49f;--faint:#7d807c;--on:#fff;
-  --paper:rgba(44,45,50,.56);--paper-2:rgba(255,255,255,.028);--field:rgba(255,255,255,.065);
-  --glass:rgba(30,31,35,.56);--glass-strong:rgba(32,33,37,.84);--menu:#232428;
+  --bg:#0d0e10;--ink:#f3f2ee;--ink-2:#d2d2cd;--muted:#abada8;--faint:#8e918c;--veil:rgba(8,9,12,.46);--on:#fff;
+  --paper:rgba(42,43,48,.72);--paper-2:rgba(255,255,255,.03);--field:rgba(255,255,255,.07);
+  --glass:rgba(24,25,29,.74);--glass-strong:rgba(28,29,33,.9);--menu:#232428;
   --sunk:rgba(255,255,255,.06);--sunk-2:rgba(255,255,255,.1);--sunk-3:rgba(255,255,255,.28);
   --line:rgba(255,255,255,.1);--line-2:rgba(255,255,255,.2);--edge:rgba(255,255,255,.07);
   --accent:#e2764f;--accent-strong:#ee8961;--accent-ink:#f59c7b;--accent-soft:rgba(238,130,92,.16);--accent-line:rgba(238,130,92,.38);
@@ -125,6 +125,8 @@ body{background:transparent;color:var(--ink);-webkit-font-smoothing:antialiased}
 /* 动态背景画布（backdrop.js）。画布不可用时露出下面的光斑 */
 #galaxy,#space,#skySnap{position:absolute;inset:0;width:100%;height:100%;transition:opacity .28s}
 #skySnap{opacity:0;pointer-events:none}
+/* 夜间给星空压一层暗色，文字直接落在背景上时不刺眼 */
+.sky:after{content:"";position:absolute;inset:0;background:var(--veil);transition:background-color .4s}
 #space{opacity:0}
 
 /* 切换主题的 0.4 秒内，所有元素用同一条过渡，卡片、文字和背景一起变 */
@@ -200,3 +202,41 @@ button:has(>.spin){cursor:progress;animation:busy-pulse 1.6s ease-in-out infinit
 /* 窄窗口：侧栏收成图标栏时，剧本库和语音工作台只留图标；顶栏给主题切换让出位置 */
 @media(max-width:900px){.library-nav,.voice-nav{justify-content:center;padding:11px 0;min-height:44px}.library-nav span,.voice-nav span,.library-nav b{display:none}}
 @media(max-width:600px){.theme-switch button{width:25px;height:25px}.topbar{gap:8px}.breadcrumb>span:first-child,.breadcrumb>svg{display:none}.service-status{font-size:0}.concurrency-mini{display:none}}
+
+/* 空状态面板：改成实一点的毛玻璃，夜间不再透出满屏星点 */
+.empty-panel{background:var(--glass);border:1px solid var(--line);box-shadow:var(--shadow);color:var(--muted);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur)}
+.empty-panel strong{color:var(--ink-2)}
+
+/* 剧本区：右侧设置按自身高度完整展开，不再有内部滚动条；左侧输入框撑满同样的高度，长剧本在框内滚动 */
+.script-settings{max-height:none;overflow:visible;align-self:stretch}
+@media(min-width:901px){.script-editor{display:flex;flex-direction:column;min-height:0}.script-editor textarea{flex:1 1 auto;min-height:280px;max-height:none;resize:none}}
+@media(max-width:900px){.script-editor textarea{min-height:220px;max-height:60vh}}
+
+/* 侧栏项目切换：高亮块滑到新项目上，工作区先淡出、新内容逐块升起 */
+.project-list{position:relative}
+.nav-pill{position:absolute;left:0;right:0;top:0;z-index:0;border-radius:9px;pointer-events:none;background:var(--paper);border:1px solid var(--line);box-shadow:0 6px 16px -12px rgba(32,40,48,.35),inset 0 1px 0 var(--edge)}
+.nav-pill.moving{transition:transform 420ms var(--spring),height 300ms var(--ease-out)}
+.nav-pill.appearing{animation:pill-in 260ms var(--ease-out) both}
+@keyframes pill-in{from{opacity:0}}
+.project-list:has(.nav-pill) .project-link.active{background:transparent!important;border-color:transparent!important;box-shadow:none}
+.project-link{position:relative;z-index:1;transition:background-color .25s,color .25s,transform .25s var(--ease-out)}
+.project-link .project-thumb{transition:transform .3s var(--spring),background-color .25s,color .25s}
+.project-link:hover:not(.active) .project-thumb{transform:scale(1.06)}
+.project-link:active:not(:disabled){transform:scale(.98)}
+.workspace{transition:opacity .2s var(--ease-out),transform .2s var(--ease-out)}
+.workspace.is-leaving{opacity:.35;transform:translateY(4px);pointer-events:none}
+
+/* 其余按钮和卡片的手感 */
+.library-nav,.voice-nav,.new-project{transition:background-color .25s,border-color .25s,color .25s,box-shadow .3s,transform .2s var(--spring)}
+.library-nav:hover:not(:disabled),.voice-nav:hover:not(:disabled),.new-project:hover:not(:disabled){transform:translateY(-1px)}
+.library-nav:active:not(:disabled),.voice-nav:active:not(:disabled),.new-project:active:not(:disabled){transform:scale(.97)}
+button svg{transition:transform .3s var(--spring)}
+button.icon-button:hover:not(:disabled) svg,.new-project:hover svg{transform:scale(1.12)}
+.new-project:hover svg{transform:rotate(90deg)}
+.asset-card,.shot-card,.library-card,.provider-card{transition:transform .3s var(--ease-out),box-shadow .3s var(--ease-out),border-color .25s,background-color .25s}
+.library-card:active,.provider-card:active{transform:scale(.985)}
+.filter-tab,.settings-tabs>button,.prompt-nav>button{transition:color .25s,background-color .25s}
+.badge,.step,.step-number{transition:background-color .3s,color .3s,border-color .3s}
+input[type=checkbox]{transition:transform .2s var(--spring)}
+input[type=checkbox]:active{transform:scale(.88)}
+@media(prefers-reduced-motion:reduce){.workspace.is-leaving{opacity:1;transform:none}.nav-pill.moving{transition:none}}
