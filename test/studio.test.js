@@ -190,3 +190,31 @@ test('画布音视频：上传整理、分离音视频、截取音频，旧文�
     assert.equal(saved.nodes[0].type, 'audio'); assert.equal(saved.nodes[0].source, 'upload'); assert.equal(saved.nodes[0].url, cut.url); assert.equal(saved.nodes[1].url, '');
   } finally { app.workflow.stopping = true; await new Promise(done => app.server.close(done)); await rm(root, { recursive: true, force: true }); }
 });
+
+test('自由创作视频带参考音频：只认登记过的音频，上传后随任务提交，@音频N 原样保留', async () => {
+  const submitted = [], voices = [];
+  const context = await setup({ video: () => ({
+    uploadImage: async () => ({ assetId: 'img-1' }),
+    uploadAudio: async path => { voices.push(path); return { assetId: `voice-${voices.length}` }; },
+    submit: async input => { submitted.push(input); return { id: 'task-a', status: 'completed', progress: 100, urls: ['https://cdn.example/v.mp4'] }; },
+    getTask: async () => ({ id: 'task-a', status: 'completed', progress: 100, urls: ['https://cdn.example/v.mp4'] }),
+  }) });
+  try {
+    const { studio, root } = context;
+    await writeFile(join(root, '_studio', 'clip_aaaa.m4a'), 'fake-audio');
+    const clip = await studio.registerClip({ output: join(root, '_studio', 'clip_aaaa.m4a'), kind: 'audio', duration: 4 }, '旁白');
+    const picture = await studio.addReference(PNG, 'a.png'), channel = studio.view().channels[0].value;
+    const base = { kind: 'video', refIds: [picture.id], channel, duration: 15, resolution: '720p' };
+    await assert.rejects(studio.create({ ...base, prompt: '@图1 说话 @音频2', audioFiles: [clip.url] }), /@音频2/);
+    await assert.rejects(studio.create({ ...base, prompt: '@图1 说话', audioFiles: ['/studio-media/clip_bbbb.m4a'] }), /参考音频已失效/);
+    await assert.rejects(studio.create({ ...base, prompt: '@图1 说话', audioFiles: [clip.url, clip.url] }), /重复/);
+    await studio.create({ ...base, prompt: '@图1 用 @音频1 的声音说话', audioFiles: [clip.url] });
+    await context.done();
+    assert.equal(voices.length, 1); assert.match(voices[0], /clip_aaaa\.m4a$/);
+    assert.deepEqual(submitted[0].referenceAudios, [{ assetId: 'voice-1' }]);
+    assert.match(submitted[0].prompt, /@音频1 的声音说话$/);
+    assert.deepEqual(studio.view().items[0].audios, [{ name: '音频1', url: clip.url }]);
+    // 图片生成不带音频，提示词里写了 @音频 也会被挡住。
+    await assert.rejects(studio.create({ kind: 'image', prompt: '画 @音频1', refIds: [], audioFiles: [clip.url] }), /@音频1/);
+  } finally { await context.close(); }
+});

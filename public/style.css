@@ -672,12 +672,16 @@ html[data-theme=dark] .cv{--cv-bg:#191919;--cv-dot:rgba(255,255,255,.055);--cv-n
 .cv-wave svg{position:absolute;inset:6px 8px;width:calc(100% - 16px);height:calc(100% - 12px)}
 .cv-wave rect{fill:var(--muted);opacity:.75;transition:fill .25s,opacity .25s}
 .cv-node.playing .cv-wave rect,.cv-node.selected .cv-wave rect{fill:var(--ink-2);opacity:.9}
-.cv-playhead{position:absolute;top:0;bottom:0;left:0;width:1.5px;margin-left:8px;background:#ff5b4f;box-shadow:0 0 6px #ff5b4f99;pointer-events:none}
+.cv-playhead{position:absolute;top:0;bottom:0;left:calc(8px + (100% - 16px) * var(--p,0));width:1.5px;margin-left:-.75px;background:#ff5b4f;box-shadow:0 0 6px #ff5b4f99;cursor:ew-resize;z-index:2}
+.cv-playhead::before{content:"";position:absolute;top:0;bottom:0;left:-7px;right:-7px}
+.cv-playhead::after{content:"";position:absolute;top:-1px;left:50%;width:9px;height:9px;margin-left:-4.5px;border-radius:50%;background:#ff5b4f;transform:scale(0);transition:transform .18s var(--ease-out)}
+.cv-node:hover .cv-playhead::after,.cv-node.playing .cv-playhead::after,.cv-node.selected .cv-playhead::after{transform:scale(1)}
+.cv-node.selected .cv-wave{cursor:text}
 .cv-audio-bar{display:flex;align-items:center;justify-content:space-between;height:26px;font-size:10px;color:var(--muted);font-variant-numeric:tabular-nums}
 .cv-play{width:26px;height:26px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--ink);display:grid;place-items:center;cursor:pointer;transition:background .16s,transform .2s var(--ease-out)}
 .cv-play:hover{background:var(--sunk);transform:scale(1.08)}
 .cv-play svg{fill:currentColor}
-.cv-trim{position:absolute;inset:0}
+.cv-trim{position:absolute;inset:0 8px}
 .cv-trim-mask{position:absolute;top:0;bottom:0;background:color-mix(in srgb,var(--cv-bg) 72%,transparent);pointer-events:none}
 .cv-trim-window{position:absolute;top:0;bottom:0;border:2px solid var(--ink);border-radius:8px;cursor:grab;display:grid;place-items:center;box-shadow:0 0 0 1px #0000004d}
 .cv-trim-window:active{cursor:grabbing}
@@ -712,3 +716,11 @@ html[data-theme=dark] .cv{--cv-bg:#191919;--cv-dot:rgba(255,255,255,.055);--cv-n
 .cv-panel .studio-box.expanded .studio-editor{min-height:min(40vh,400px);max-height:52vh}
 .cv-panel:has(.studio-box.expanded){width:min(860px,calc(100vw - 32px))}
 @media(prefers-reduced-motion:reduce){.studio-editor,.cv-trimbar{transition:none;animation:none}}
+
+/* 参考音频：输入框里的标签和素材条 */
+.studio-at.audio{padding-left:4px;cursor:default}
+.studio-at.audio i{width:20px;height:20px;border-radius:5px;display:grid;place-items:center;background:color-mix(in srgb,var(--accent) 22%,transparent);color:var(--accent-ink)}
+.studio-ref.audio{display:grid;place-items:center;align-content:center;gap:2px;border-radius:12px;background:var(--sunk);color:var(--ink-2)}
+.studio-ref.audio i{display:grid;place-items:center;color:var(--accent-ink)}
+.studio-ref.audio span{position:static;font-size:10px;color:var(--muted);background:none;padding:0}
+.studio-mention-wave{width:38px;height:36px;border-radius:4px;display:grid;place-items:center;background:var(--sunk);color:var(--accent-ink);flex:none}

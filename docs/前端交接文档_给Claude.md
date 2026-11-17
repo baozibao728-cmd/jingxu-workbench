@@ -300,6 +300,8 @@ npm start
 - 节点有三种：图片、视频、音频。图片、音频、视频都能上传（底栏“上传素材”、拖入、粘贴）。音视频走 `POST /api/studio/clips`（请求体是原始字节，`Content-Type: application/octet-stream`，文件名放 `X-File-Name`，上限 500MB），后端用 FFmpeg 整理成 mp4 / mp3 / m4a，登记在 `studio.json` 的 `clips` 里，文件名 `clip_*`。没有节点引用、放了一天以上的 clip 会在启动时清掉。
 - 单选一个有成品的节点时，上方出现工具条（`drawNodeBar`）：图片“预览、下载”，视频“分离音视频、预览、下载”，音频“截取、下载”。分离走 `POST /api/studio/split`（得到无声视频 + m4a 音轨两个新节点），截取走 `POST /api/studio/trim`（`start`、`end` 按秒），新节点放在右边并连线。处理都在 `src/media-clips.js`，需要本机装 FFmpeg。
 - 音频节点的波形在浏览器里用 `OfflineAudioContext` 解码算出来，按地址缓存；截取时在波形上拖左右把手或整段。
+- 红色播放线可以拖（`seek` 拖动），节点选中后点波形任意位置也会跳过去。选中的视频节点按住画面就能拖动，底部 46px 留给原生播放控件；没拖动只点一下画面是播放 / 暂停。
+- 参考音频：音频节点也有出线把手，只能连到视频生成节点，每个最多 3 段。输入框里显示为“音频N”，`@` 菜单能插入 `@音频N` 标签。生成时前端传 `audioFiles`（clip 地址），后端 `Studio.create` 只认登记过的音频 clip，`run()` 用厂商的 `uploadAudio` 上传后放进 `referenceAudios`，提示词里的 `@音频N` 原样保留。
 - 拖节点、拉线、框选靠近窗口边缘（64px 内）时画面自动朝那边移（`edgePan`），越靠边越快。
 - 输入框右上角有放大按钮（`studio-expand`），创作页和画布里都有；画布里放大后会把画面往上挪，保证输入框在底栏上方完整露出。
 - 生成走自由创作的同一个接口。选中生成节点时，下方输入框就是自由创作那个：`setHost()` 让 `draft` 指向节点内容，增删参考图和生成由画布接管。

@@ -1,6 +1,6 @@
 // 画布：在一张无限大的画面上摆放图片和视频节点，用连线把图片当参考图接到生成节点上。
 // 生成本身走“自由创作”的同一套接口；选中生成节点时，下方的输入框也是同一个，只是内容换成这个节点的。
-import { draft, setHost, composerBox, paint, removeRef as dropRef, settle, loadData, studioData, onData, mediaHTML, activeJob } from './studio.js';
+import { draft, setHost, composerBox, paint, removeRef as dropRef, removeAudio as dropAudio, settle, loadData, studioData, onData, mediaHTML, activeJob } from './studio.js';
 
 let ctx = null, list = [], cv = null, root = null, bound = null, drag = null, space = false, saveTimer = null, menuState = null, trim = null, edgeTimer = 0;
 const sel = new Set(), last = { x: 0, y: 0 };
@@ -11,6 +11,11 @@ const uid = () => Array.from(crypto.getRandomValues(new Uint8Array(10)), byte =>
 const node = id => cv.nodes.find(item => item.id === id);
 const height = item => item.w / (item.ratio || 16 / 9);
 const sources = target => cv.edges.filter(edge => edge.to === target.id).map(edge => node(edge.from)).filter(Boolean);
+const imageSources = target => sources(target).filter(item => item.type === 'image');
+const audioSources = target => target.type === 'video' ? sources(target).filter(item => item.type === 'audio') : [];
+// 能拉线出去的：图片当参考图，音频当参考音频（只能接视频生成）。
+const linkable = item => item?.type === 'image' || item?.type === 'audio';
+const fits = (from, target) => target?.source === 'gen' && from && from.id !== target.id && (from.type === 'image' || (from.type === 'audio' && target.type === 'video'));
 const itemOf = item => item.itemId ? studioData()?.items.find(entry => entry.id === item.itemId) : null;
 const toWorld = (clientX, clientY) => ({ x: (clientX - cv.view.x) / cv.view.k, y: (clientY - cv.view.y) / cv.view.k });
 const ratioOf = text => ({ '9:16': 9 / 16, '1:1': 1 }[text] || 16 / 9);
@@ -56,7 +61,7 @@ function fit() {
 }
 function audioHTML(item) {
   const { escape, icon } = ctx, bars = peaks.get(item.url);
-  return `<div class="cv-audio"><div class="cv-wave">${waveHTML(bars)}<i class="cv-playhead"></i>${trim?.id === item.id ? trimHTML(item) : ''}</div><div class="cv-audio-bar"><span class="cv-time">00:00</span><button class="cv-play" data-play aria-label="播放">${icon('play', 12)}</button><span>${clock(item.duration)}</span></div><audio src="${escape(item.url)}" preload="metadata"></audio></div>`;
+  return `<div class="cv-audio"><div class="cv-wave">${waveHTML(bars)}<i class="cv-playhead" data-seek title="拖动换位置"></i>${trim?.id === item.id ? trimHTML(item) : ''}</div><div class="cv-audio-bar"><span class="cv-time">00:00</span><button class="cv-play" data-play aria-label="播放">${icon('play', 12)}</button><span>${clock(item.duration)}</span></div><audio src="${escape(item.url)}" preload="metadata"></audio></div>`;
 }
 function bodyHTML(item) {
   const { escape, icon } = ctx;
@@ -71,7 +76,7 @@ function bodyHTML(item) {
 const bodyKey = item => { const job = itemOf(item); return JSON.stringify([item.url, job?.result?.url || '', job?.job.state || '', job?.job.error || '', item.type === 'audio' && trim?.id === item.id]); };
 function nodeHTML(item, fresh = false) {
   const { escape, icon } = ctx;
-  return `<div class="cv-node type-${item.type} ${sel.has(item.id) ? 'selected' : ''} ${fresh ? 'is-new' : ''}" data-node="${item.id}" style="left:${item.x}px;top:${item.y}px;width:${item.w}px"><div class="cv-node-label">${icon(nodeIcon(item.type), 12)}<span>${escape(item.label)}</span>${item.duration && item.type !== 'image' ? `<em>${clock(item.duration)}</em>` : ''}</div><div class="cv-node-body" data-key="${escape(bodyKey(item))}" style="aspect-ratio:${item.ratio || 16 / 9}">${bodyHTML(item)}</div>${trim?.id === item.id ? trimBarHTML() : ''}${item.type === 'image' ? `<button class="cv-handle" data-handle title="拉出连线，用这张图去生成" aria-label="拉出连线"><i>${icon('plus', 13)}</i></button>` : ''}</div>`;
+  return `<div class="cv-node type-${item.type} ${sel.has(item.id) ? 'selected' : ''} ${fresh ? 'is-new' : ''}" data-node="${item.id}" style="left:${item.x}px;top:${item.y}px;width:${item.w}px"><div class="cv-node-label">${icon(nodeIcon(item.type), 12)}<span>${escape(item.label)}</span>${item.duration && item.type !== 'image' ? `<em>${clock(item.duration)}</em>` : ''}</div><div class="cv-node-body" data-key="${escape(bodyKey(item))}" style="aspect-ratio:${item.ratio || 16 / 9}">${bodyHTML(item)}</div>${trim?.id === item.id ? trimBarHTML() : ''}${linkable(item) ? `<button class="cv-handle" data-handle title="${item.type === 'audio' ? '拉出连线，给视频当参考音频' : '拉出连线，用这张图去生成'}" aria-label="拉出连线"><i>${icon('plus', 13)}</i></button>` : ''}</div>`;
 }
 function drawNodes() { $('.cv-nodes').innerHTML = cv.nodes.map(item => nodeHTML(item)).join(''); drawEdges(); drawGroups(); toggleEmpty(); }
 function toggleEmpty() { $('.cv-empty').hidden = cv.nodes.length > 0; }
@@ -110,12 +115,20 @@ function watchAudio(scope, item) {
   loadPeaks(item.url).then(bars => { if (!bars) return; for (const element of root?.querySelectorAll(`[data-node] .cv-audio`) || []) { const owner = node(element.closest('[data-node]').dataset.node); if (owner?.url === item.url) element.querySelector('.cv-wave svg').outerHTML = waveHTML(bars); } });
   const head = scope.querySelector('.cv-playhead'), time = scope.querySelector('.cv-time'), button = scope.querySelector('[data-play]');
   let frame = 0;
-  const show = () => { const total = audio.duration || item.duration || 1; head.style.left = `${Math.min(100, audio.currentTime / total * 100)}%`; time.textContent = clock(audio.currentTime);
+  const show = () => { const total = audio.duration || item.duration || 1; head.style.setProperty('--p', Math.min(1, audio.currentTime / total)); time.textContent = clock(audio.currentTime);
     if (trim?.id === item.id && audio.currentTime >= trim.end) { audio.pause(); audio.currentTime = trim.start; }
     if (!audio.paused) frame = requestAnimationFrame(show); };
   audio.addEventListener('play', () => { button.innerHTML = ctx.icon('pause', 12); button.ariaLabel = '暂停'; scope.closest('.cv-node')?.classList.add('playing'); cancelAnimationFrame(frame); frame = requestAnimationFrame(show); });
   audio.addEventListener('pause', () => { button.innerHTML = ctx.icon('play', 12); button.ariaLabel = '播放'; scope.closest('.cv-node')?.classList.remove('playing'); cancelAnimationFrame(frame); show(); });
+  audio.addEventListener('timeupdate', () => { if (audio.paused) show(); });
   audio.addEventListener('loadedmetadata', () => { if (!item.duration && audio.duration) { item.duration = Math.round(audio.duration * 1000) / 1000; scope.querySelector('.cv-audio-bar span:last-child').textContent = clock(item.duration); save(); } });
+}
+// 拖红线或点波形：跳到那个位置，正在播就接着播。
+function seekTo(element, clientX) {
+  const audio = element.querySelector('audio'), wave = element.querySelector('.cv-wave'), item = node(element.dataset.node); if (!audio || !wave || !item) return;
+  const rect = wave.getBoundingClientRect(), pad = 8 * rect.width / wave.offsetWidth, total = audio.duration || item.duration || 0; if (!total) return;
+  const fraction = Math.min(1, Math.max(0, (clientX - rect.left - pad) / (rect.width - pad * 2)));
+  audio.currentTime = fraction * total; element.querySelector('.cv-playhead').style.setProperty('--p', fraction); element.querySelector('.cv-time').textContent = clock(fraction * total);
 }
 function togglePlay(element) {
   const audio = element.querySelector('audio'), item = node(element.dataset.node); if (!audio) return;
@@ -205,7 +218,7 @@ async function uploadClip(file) {
 function drawSelBox() {
   const box = $('.cv-selbox'), area = sel.size > 1 ? boundsOf([...sel]) : null;
   if (!area) { box.hidden = true; return; }
-  const { icon } = ctx, images = [...sel].some(id => node(id)?.type === 'image'), grouped = groupOfSelection(), inverse = 1 / cv.view.k;
+  const { icon } = ctx, images = [...sel].some(id => linkable(node(id))), grouped = groupOfSelection(), inverse = 1 / cv.view.k;
   box.hidden = false; box.style.cssText = `left:${area.l - 18}px;top:${area.t - 14}px;width:${area.r - area.l + 36}px;height:${area.b - area.t + 32}px`;
   box.innerHTML = `<div class="cv-seltools" style="transform:scale(${inverse})"><span>已选 ${sel.size} 个</span><button data-action="${grouped ? 'canvas-ungroup' : 'canvas-group'}">${icon('copy', 13)}${grouped ? '解组' : '打组'}</button><button data-action="canvas-delete-selected">${icon('trash', 13)}删除</button></div>${images ? `<button class="cv-handle multi" data-handle-multi style="transform:scale(${inverse})" title="把选中的图片一起连出去" aria-label="一起拉出连线"><i>${icon('plus', 13)}</i></button>` : ''}`;
 }
@@ -243,7 +256,7 @@ function bind() {
   const only = sel.size === 1 ? node([...sel][0]) : null, target = only?.source === 'gen' ? only : null, panel = $('.cv-panel');
   if (!target) { bound = null; panel.hidden = true; panel.innerHTML = ''; return; }
   const same = bound === target; bound = target;
-  Object.assign(draft, { kind: target.type, prompt: target.prompt, refs: sources(target).map(item => ({ id: item.refId, url: item.url || BLANK, nodeId: item.id })), ...target.settings });
+  Object.assign(draft, { kind: target.type, prompt: target.prompt, refs: imageSources(target).map(item => ({ id: item.refId, url: item.url || BLANK, nodeId: item.id })), audios: audioSources(target).map(item => ({ url: item.url, name: item.label, nodeId: item.id })), ...target.settings });
   settle();
   panel.innerHTML = composerBox(); panel.hidden = false; placePanel();
   if (!same && !calm()) panel.firstElementChild?.animate([{ opacity: 0, transform: 'translateY(-8px)' }, { opacity: 1, transform: 'none' }], { duration: 240, easing: 'cubic-bezier(.2,.8,.2,1)' });
@@ -262,9 +275,14 @@ const host = {
     save();
   },
   removeRef(index) {
-    const source = sources(bound)[index]; if (!source) return;
+    const source = imageSources(bound)[index]; if (!source) return;
     cv.edges = cv.edges.filter(edge => !(edge.from === source.id && edge.to === bound.id));
     dropRef(index); bound.prompt = draft.prompt; paint({ editor: true }); drawEdges(); save();
+  },
+  removeAudio(index) {
+    const source = audioSources(bound)[index]; if (!source) return;
+    cv.edges = cv.edges.filter(edge => !(edge.from === source.id && edge.to === bound.id));
+    dropAudio(index); bound.prompt = draft.prompt; paint({ editor: true }); drawEdges(); save();
   },
   async addFiles(files) {
     const target = bound, start = target ? { x: target.x - 380, y: target.y } : toWorld(last.x || innerWidth / 2, last.y || innerHeight / 2);
@@ -304,7 +322,7 @@ const host = {
     const target = bound; if (!target) throw new Error('请先选中一个生成节点');
     if (activeJob(itemOf(target)?.job)) throw new Error('这个节点还在生成，等它完成再重新生成');
     const refIds = [];
-    for (const [index, source] of sources(target).entries()) {
+    for (const [index, source] of imageSources(target).entries()) {
       if (!source.refId) {
         const job = itemOf(source);
         if (!(source.source === 'gen' && job?.kind === 'image' && job.result)) throw new Error(`图${index + 1} 还没有生成好，先等它完成或换一张图`);
@@ -312,7 +330,7 @@ const host = {
       }
       refIds.push(source.refId);
     }
-    const view = await ctx.api('/api/studio/items', { method: 'POST', body: { kind: target.type, prompt: target.prompt, refIds, channel: draft.channel, duration: draft.duration, resolution: draft.resolution, aspectRatio: draft.aspectRatio } });
+    const view = await ctx.api('/api/studio/items', { method: 'POST', body: { kind: target.type, prompt: target.prompt, refIds, audioFiles: audioSources(target).map(item => item.url), channel: draft.channel, duration: draft.duration, resolution: draft.resolution, aspectRatio: draft.aspectRatio } });
     target.itemId = view.items[0].id; if (target.type === 'image') { target.url = ''; target.refId = ''; }
     save(); ctx.notify(target.type === 'video' ? '已提交，视频生成需要几分钟' : '已提交，图片马上就好');
     return view;
@@ -349,7 +367,7 @@ function createFromMenu(kind) {
   const state = menuState; closeMenu(); menuState = null; if (!state) return;
   const point = toWorld(state.clientX, state.clientY), ratio = 16 / 9, w = 320;
   const created = addNode({ type: kind, x: point.x, y: point.y - LABEL - w / ratio / 2 });
-  for (const id of state.from || []) cv.edges.push({ from: id, to: created.id });
+  for (const id of state.from || []) if (fits(node(id), created) && !(node(id).type === 'audio' && audioSources(created).length >= 3)) cv.edges.push({ from: id, to: created.id });
   sel.clear(); sel.add(created.id); paintSelection(); reveal(created); save();
   requestAnimationFrame(() => document.querySelector('#studio-prompt')?.focus({ preventScroll: true }));
 }
@@ -358,7 +376,8 @@ filePicker.addEventListener('change', () => { const files = [...filePicker.files
 const picker = () => filePicker.click();
 function openMenu(clientX, clientY, from = null) {
   const { icon } = ctx, menu = $('.cv-menu'); menuState = { clientX, clientY, from, world: toWorld(clientX, clientY) };
-  menu.innerHTML = `<small>${from ? '用它生成' : '添加节点'}</small><button data-action="canvas-add" data-kind="image">${icon('image', 15)}图片</button><button data-action="canvas-add" data-kind="video">${icon('play', 15)}视频</button>${from ? '' : `<button data-action="canvas-add" data-kind="upload">${icon('upload', 15)}上传素材</button>`}`;
+  const onlyAudio = from?.length && from.every(id => node(id)?.type === 'audio');
+  menu.innerHTML = `<small>${from ? '用它生成' : '添加节点'}</small>${onlyAudio ? '' : `<button data-action="canvas-add" data-kind="image">${icon('image', 15)}图片</button>`}<button data-action="canvas-add" data-kind="video">${icon('play', 15)}视频</button>${from ? '' : `<button data-action="canvas-add" data-kind="upload">${icon('upload', 15)}上传素材</button>`}`;
   menu.hidden = false; menu.style.left = `${Math.min(clientX, innerWidth - 190)}px`; menu.style.top = `${Math.min(clientY - 16, innerHeight - 170)}px`;
   if (!calm()) menu.animate([{ opacity: 0, transform: 'scale(.94)' }, { opacity: 1, transform: 'none' }], { duration: 160, easing: 'cubic-bezier(.2,.8,.2,1)' });
 }
@@ -372,21 +391,29 @@ function onDown(event) {
   const play = event.target.closest('[data-play]');
   if (play && event.button === 0 && !space) { event.preventDefault(); return togglePlay(play.closest('.cv-node')); }
   const grip = event.target.closest('[data-trim]');
-  if (grip && trim && event.button === 0 && !space) { event.preventDefault(); drag = { kind: 'trim', part: grip.dataset.trim, x: event.clientX, y: event.clientY, start: trim.start, end: trim.end, width: grip.closest('.cv-wave').getBoundingClientRect().width, moved: false, pan: { x: 0, y: 0 } }; try { root.setPointerCapture(event.pointerId); } catch {} return; }
+  if (grip && trim && event.button === 0 && !space) { event.preventDefault(); drag = { kind: 'trim', part: grip.dataset.trim, x: event.clientX, y: event.clientY, start: trim.start, end: trim.end, width: grip.closest('.cv-wave').getBoundingClientRect().width * (1 - 16 / grip.closest('.cv-wave').offsetWidth), moved: false, pan: { x: 0, y: 0 } }; try { root.setPointerCapture(event.pointerId); } catch {} return; }
+  const wave = !grip && event.target.closest('.cv-wave'), owner = wave && event.target.closest('.cv-node');
+  if (owner && event.button === 0 && !space && (event.target.closest('[data-seek]') || (sel.size === 1 && sel.has(owner.dataset.node)))) {
+    event.preventDefault(); if (!sel.has(owner.dataset.node) || sel.size > 1) { sel.clear(); sel.add(owner.dataset.node); paintSelection(); }
+    drag = { kind: 'seek', element: owner, x: event.clientX, y: event.clientY, moved: false, pan: { x: 0, y: 0 } }; try { root.setPointerCapture(event.pointerId); } catch {}
+    return seekTo(owner, event.clientX);
+  }
   const groupElement = event.target.closest('.cv-group'), group = groupElement && cv.groups.find(entry => entry.id === groupElement.dataset.group);
   if (group && event.button === 0 && !space) { if (!event.shiftKey) sel.clear(); for (const member of group.nodes) sel.add(member); paintSelection(); }
   const element = event.target.closest('.cv-node') || (group && root.querySelector(`[data-node="${group.nodes[0]}"]`)), id = element?.dataset.node;
   if (event.button === 1 || (event.button === 0 && space)) { event.preventDefault(); drag = { kind: 'pan', x: event.clientX, y: event.clientY, vx: cv.view.x, vy: cv.view.y }; root.classList.add('grabbing'); }
   else if (event.button !== 0) return;
-  else if (event.target.closest('[data-handle-multi]')) { drag = { kind: 'link', multi: true, from: [...sel].filter(other => node(other)?.type === 'image'), x: event.clientX, y: event.clientY, moved: false }; root.classList.add('linking'); }
-  else if (event.target.closest('[data-handle]')) { const from = sel.has(id) ? [...sel].filter(other => node(other)?.type === 'image') : [id]; drag = { kind: 'link', from, x: event.clientX, y: event.clientY, moved: false }; root.classList.add('linking'); }
+  else if (event.target.closest('[data-handle-multi]')) { drag = { kind: 'link', multi: true, from: [...sel].filter(other => linkable(node(other))), x: event.clientX, y: event.clientY, moved: false }; root.classList.add('linking'); }
+  else if (event.target.closest('[data-handle]')) { const from = sel.has(id) ? [...sel].filter(other => linkable(node(other))) : [id]; drag = { kind: 'link', from, x: event.clientX, y: event.clientY, moved: false }; root.classList.add('linking'); }
   else if (element) {
-    if (event.target.tagName === 'VIDEO' && sel.has(id) && sel.size === 1) return;
+    // 视频底部那条是播放控件，留给它自己用；画面其它地方按住就能拖。
+    const video = event.target.tagName === 'VIDEO' ? event.target : null;
+    if (video && event.clientY > video.getBoundingClientRect().bottom - 46 * cv.view.k) { if (!sel.has(id) || sel.size > 1) { sel.clear(); sel.add(id); paintSelection(); } return; }
     const was = sel.has(id) || Boolean(group);
     if (!sel.has(id)) { if (!event.shiftKey) sel.clear(); sel.add(id); paintSelection(); }
-    drag = { kind: 'move', id, was, group: Boolean(group), shift: event.shiftKey, x: event.clientX, y: event.clientY, moved: false, start: [...sel].map(other => { const item = node(other); return { item, x: item.x, y: item.y, element: root.querySelector(`[data-node="${other}"]`) }; }) };
+    drag = { kind: 'move', id, was, video, group: Boolean(group), shift: event.shiftKey, x: event.clientX, y: event.clientY, moved: false, start: [...sel].map(other => { const item = node(other); return { item, x: item.x, y: item.y, element: root.querySelector(`[data-node="${other}"]`) }; }) };
   } else { drag = { kind: 'marquee', x: event.clientX, y: event.clientY, moved: false, base: event.shiftKey ? new Set(sel) : new Set() }; document.activeElement?.blur?.(); }
-  if (drag) { drag.pan = { x: 0, y: 0 }; if (drag.kind === 'marquee') { const origin = toWorld(drag.x, drag.y); drag.wx = origin.x; drag.wy = origin.y; } root.setPointerCapture(event.pointerId); if (drag.kind !== 'move' || event.target.tagName !== 'VIDEO') event.preventDefault(); }
+  if (drag) { drag.pan = { x: 0, y: 0 }; if (drag.kind === 'marquee') { const origin = toWorld(drag.x, drag.y); drag.wx = origin.x; drag.wy = origin.y; } try { root.setPointerCapture(event.pointerId); } catch {} event.preventDefault(); }
 }
 // 加号的磁吸：鼠标进到它周围一圈，圆点就朝鼠标靠过来一点。
 let pulled = null;
@@ -416,6 +443,7 @@ function edgePan() {
   edgeTimer = requestAnimationFrame(edgePan);
 }
 function follow() {
+  if (drag.kind === 'seek') return seekTo(drag.element, last.x);
   const dx = last.x - drag.x - drag.pan.x, dy = last.y - drag.y - drag.pan.y;
   if (drag.kind === 'trim') {
     const item = node(trim?.id), total = item?.duration || 0; if (!total) return;
@@ -439,7 +467,7 @@ function follow() {
   } else if (drag.kind === 'link') {
     const to = toWorld(last.x, last.y), over = document.elementFromPoint(last.x, last.y)?.closest?.('.cv-node');
     for (const element of root.querySelectorAll('.cv-node.target')) element.classList.remove('target');
-    const target = over && node(over.dataset.node); if (target?.source === 'gen' && !drag.from.includes(target.id)) over.classList.add('target');
+    const target = over && node(over.dataset.node); if (drag.from.some(id => fits(node(id), target))) over.classList.add('target');
     drag.to = to; drawEdges();
   }
 }
@@ -447,12 +475,14 @@ function onUp(event) {
   const current = drag; drag = null; if (!current) return;
   cancelAnimationFrame(edgeTimer); edgeTimer = 0;
   root.classList.remove('grabbing', 'moving', 'linking');
-  if (current.kind === 'trim') return;
+  if (current.kind === 'trim' || current.kind === 'seek') return;
   if (current.pan.x || current.pan.y) save();
   drawNodeBar();
   if (current.kind === 'pan') return save();
   if (current.kind === 'move') {
     if (current.moved) return save();
+    // 已选中的视频，点一下画面（没拖动）就播放或暂停。
+    if (current.video && current.was && !current.shift && sel.size === 1) { if (current.video.paused) current.video.play().catch(() => {}); else current.video.pause(); }
     if (current.group) return paintSelection();
     if (current.shift && current.was) sel.delete(current.id); else if (!current.shift && sel.size > 1) { sel.clear(); sel.add(current.id); }
     return paintSelection();
@@ -462,7 +492,14 @@ function onUp(event) {
     for (const element of root.querySelectorAll('.cv-node.target')) element.classList.remove('target');
     const over = document.elementFromPoint(event.clientX, event.clientY)?.closest?.('.cv-node'), target = over && node(over.dataset.node);
     if (target?.source === 'gen' && !current.from.includes(target.id)) {
-      for (const id of current.from) if (!cv.edges.some(edge => edge.from === id && edge.to === target.id)) cv.edges.push({ from: id, to: target.id });
+      const usable = current.from.filter(id => fits(node(id), target));
+      if (!usable.length) { ctx.notify('音频只能连到视频生成节点，当参考音频用', true); return drawEdges(); }
+      if (usable.length < current.from.length) ctx.notify('音频只能连到视频生成节点，已跳过音频', true);
+      for (const id of usable) {
+        if (cv.edges.some(edge => edge.from === id && edge.to === target.id)) continue;
+        if (node(id).type === 'audio' && audioSources(target).length >= 3) { ctx.notify('一个视频最多连 3 段参考音频', true); continue; }
+        cv.edges.push({ from: id, to: target.id });
+      }
       sel.clear(); sel.add(target.id); paintSelection(); return save();
     }
     if (over && current.moved) return drawEdges();

@@ -6,8 +6,8 @@ let ctx = null, data = null, timer = null, uploading = 0, lastJSON = '', mode = 
 let host = null, expanded = false;
 // 画布里除了图片，还能放音频和视频素材。
 const isMedia = file => /^(audio|video)\//.test(file.type);
-export function setHost(next) { host = next; closePop(); hideMenu(); hidePeek(); }
-export const draft = { kind: 'video', prompt: '', refs: [], channel: '', duration: 0, resolution: '', aspectRatio: '16:9' };
+export function setHost(next) { host = next; if (!next) draft.audios = []; closePop(); hideMenu(); hidePeek(); }
+export const draft = { kind: 'video', prompt: '', refs: [], audios: [], channel: '', duration: 0, resolution: '', aspectRatio: '16:9' };
 try { Object.assign(draft, JSON.parse(localStorage.getItem('drama-studio') || '{}')); } catch {}
 draft.prompt = ''; draft.refs = [];
 const remember = () => { if (host) return host.change?.(); try { localStorage.setItem('drama-studio', JSON.stringify({ kind: draft.kind, channel: draft.channel, duration: draft.duration, resolution: draft.resolution, aspectRatio: draft.aspectRatio })); } catch {} };
@@ -108,13 +108,20 @@ function updateFeed() {
 
 // ---- 页面 ----
 const chipHTML = index => { const ref = draft.refs[index - 1]; return `<span class="studio-at" contenteditable="false" data-index="${index}" data-peek="${ctx.escape(ref.url)}"><img src="${ctx.escape(ref.url)}" alt="图${index}" data-zoom-image draggable="false"><b>图${index}</b></span>${ZW}`; };
-const editorHTML = () => draft.prompt.split(/(@图\d+ ?)/).map(part => { const match = /^@图(\d+)/.exec(part); return match && draft.refs[Number(match[1]) - 1] ? chipHTML(Number(match[1])) : ctx.escape(part); }).join('');
+// 参考音频的标签：没有缩略图，用一个声波图标。
+const audioChipHTML = index => `<span class="studio-at audio" contenteditable="false" data-audio="${index}"><i>${ctx.icon('wave', 13)}</i><b>音频${index}</b></span>${ZW}`;
+const editorHTML = () => draft.prompt.split(/(@图\d+ ?|@音频\d+ ?)/).map(part => {
+  const picture = /^@图(\d+)/.exec(part); if (picture && draft.refs[Number(picture[1]) - 1]) return chipHTML(Number(picture[1]));
+  const sound = /^@音频(\d+)/.exec(part); if (sound && draft.audios[Number(sound[1]) - 1]) return audioChipHTML(Number(sound[1]));
+  return ctx.escape(part);
+}).join('');
 const placeholder = () => limit() > 0 ? '描述你想要的画面，输入 @ 引用参考图' : '描述你想要的画面';
 function refsHTML() {
   const { escape, icon } = ctx, max = limit();
   const refs = draft.refs.map((ref, index) => `<div class="studio-ref"><img src="${escape(ref.url)}" alt="图${index + 1}" data-zoom-image data-peek="${escape(ref.url)}" tabindex="0" draggable="false"><span>图${index + 1}</span><button class="studio-ref-remove" data-action="studio-remove-ref" data-index="${index}" aria-label="移除图${index + 1}">${icon('close', 10)}</button></div>`).join('');
   const add = max > 0 ? `<button class="studio-ref-add" data-action="studio-add-ref" title="添加参考图（最多 ${max} 张），也可以直接拖进来或粘贴" ${draft.refs.length >= max ? 'disabled' : ''}>${uploading ? icon('refresh', 16, 'spin') : icon('plus', 17)}</button>` : '';
-  return refs + add;
+  const audios = draft.kind === 'video' ? draft.audios.map((audio, index) => `<div class="studio-ref audio" title="${escape(audio.name || '')}"><i>${icon('wave', 18)}</i><span>音频${index + 1}</span><button class="studio-ref-remove" data-action="studio-remove-audio" data-index="${index}" aria-label="移除音频${index + 1}">${icon('close', 10)}</button></div>`).join('') : '';
+  return refs + audios + add;
 }
 function barHTML() {
   const { escape } = ctx, video = draft.kind === 'video', current = channel();
@@ -188,6 +195,11 @@ document.addEventListener('paste', event => {
   // 文字一律按纯文本贴进输入框，不带网页上的格式。
   if (event.target.closest?.('#studio-prompt')) { event.preventDefault(); insertText(event.clipboardData?.getData('text/plain') || ''); }
 });
+// 移除一段参考音频，和参考图一样后面的往前补位。
+export function removeAudio(index) {
+  draft.audios.splice(index, 1); const removed = index + 1;
+  draft.prompt = draft.prompt.replace(/@音频(\d+)( ?)/g, (whole, digits, space) => { const n = Number(digits); return n === removed ? '' : n > removed ? `@音频${n - 1}${space}` : whole; });
+}
 // 移除一张参考图后，后面的图往前补位，提示词里的编号跟着改。
 export function removeRef(index) {
   draft.refs.splice(index, 1); const removed = index + 1;
@@ -199,7 +211,7 @@ function serialize(node) {
   let out = '';
   for (const child of node.childNodes) {
     if (child.nodeType === 3) out += child.nodeValue.replaceAll(ZW, '');
-    else if (child.classList?.contains('studio-at')) out += `@图${child.dataset.index} `;
+    else if (child.classList?.contains('studio-at')) out += child.dataset.audio ? `@音频${child.dataset.audio} ` : `@图${child.dataset.index} `;
     else if (child.nodeName === 'BR') out += '\n';
     else { if (/^(DIV|P)$/.test(child.nodeName) && out && !out.endsWith('\n')) out += '\n'; out += serialize(child); }
   }
@@ -228,9 +240,9 @@ function place(range, nodes) {
   sync();
 }
 function insertText(text) { const range = caretRange(); if (range && text) place(range, [document.createTextNode(text)]); }
-function insertChip(index, range = caretRange()) {
-  if (!range || !draft.refs[index - 1]) return;
-  const holder = document.createElement('div'); holder.innerHTML = chipHTML(index);
+function insertChip(index, range = caretRange(), audio = false) {
+  if (!range || !(audio ? draft.audios : draft.refs)[index - 1]) return;
+  const holder = document.createElement('div'); holder.innerHTML = audio ? audioChipHTML(index) : chipHTML(index);
   const chip = holder.firstElementChild; chip.classList.add('is-new');
   place(range, [chip, document.createTextNode(ZW)]);
 }
@@ -240,7 +252,7 @@ document.body.append(menu);
 let matches = [], chosen = 0, queryRange = null;
 function hideMenu() { menu.hidden = true; }
 function drawMenu(anchor) {
-  menu.innerHTML = matches.length ? matches.map((ref, index) => `<button type="button" role="option" data-studio-mention="${index}" aria-selected="${index === chosen}" class="${index === chosen ? 'active' : ''}"><img src="${ctx.escape(ref.url)}" alt=""><span>图${ref.index}</span></button>`).join('') : `<p>${draft.refs.length ? '没有这张图' : '先添加参考图：点左边的 +，或把图片拖进来、粘贴进来'}</p>`;
+  menu.innerHTML = matches.length ? matches.map((ref, index) => `<button type="button" role="option" data-studio-mention="${index}" aria-selected="${index === chosen}" class="${index === chosen ? 'active' : ''}">${ref.audio ? `<i class="studio-mention-wave">${ctx.icon('wave', 15)}</i><span>音频${ref.index}</span>` : `<img src="${ctx.escape(ref.url)}" alt=""><span>图${ref.index}</span>`}</button>`).join('') : `<p>${draft.refs.length || draft.audios.length ? '没有这个素材' : '先添加参考图：点左边的 +，或把图片拖进来、粘贴进来'}</p>`;
   menu.hidden = false;
   if (anchor) { const width = 220; menu.style.width = `${width}px`; menu.style.left = `${Math.max(12, Math.min(anchor.left, innerWidth - width - 12))}px`; menu.style.top = `${Math.max(12, Math.min(anchor.bottom + 8, innerHeight - Math.min(menu.scrollHeight, 230) - 16))}px`; }
 }
@@ -252,10 +264,11 @@ function updateMenu() {
   const query = text.slice(at + 1);
   if (query.length > 4 || /[\s@，。！？；：,!?;:]/.test(query)) return hideMenu();
   queryRange = document.createRange(); queryRange.setStart(node, at); queryRange.setEnd(node, offset); chosen = 0;
-  matches = draft.refs.map((ref, index) => ({ ...ref, index: index + 1 })).filter(ref => `图${ref.index}`.includes(query) || String(ref.index).startsWith(query));
+  matches = [...draft.refs.map((ref, index) => ({ ...ref, index: index + 1 })).filter(ref => `图${ref.index}`.includes(query) || String(ref.index).startsWith(query)),
+    ...(draft.kind === 'video' ? draft.audios : []).map((audio, index) => ({ ...audio, audio: true, index: index + 1 })).filter(audio => `音频${audio.index}`.includes(query) || String(audio.index).startsWith(query))];
   const rect = queryRange.getBoundingClientRect(); drawMenu(rect.width || rect.height ? rect : input.getBoundingClientRect());
 }
-function chooseMention(index) { const ref = matches[index]; if (!ref) return; const range = queryRange || caretRange(); hideMenu(); insertChip(ref.index, range); queryRange = null; }
+function chooseMention(index) { const ref = matches[index]; if (!ref) return; const range = queryRange || caretRange(); hideMenu(); insertChip(ref.index, range, ref.audio); queryRange = null; }
 document.addEventListener('input', event => { if (event.target.id === 'studio-prompt') { sync(); updateMenu(); } });
 document.addEventListener('keydown', event => {
   if (event.key === 'Escape' && pop) { event.preventDefault(); event.stopImmediatePropagation(); closePop(); return; }
@@ -386,6 +399,7 @@ export async function studioAction(action, button) {
     drawMenu(button.getBoundingClientRect()); return;
   }
   if (action === 'studio-remove-ref' && host) { hidePeek(); return host.removeRef(Number(button.dataset.index)); }
+  if (action === 'studio-remove-audio' && host) return host.removeAudio(Number(button.dataset.index));
   if (action === 'studio-generate' && host) { sync(); if (!draft.prompt.trim()) { $('#studio-prompt')?.focus(); throw new Error('请先写提示词'); } button.disabled = true; button.classList.add('busy'); try { setData(await host.generate()); } finally { button.classList.remove('busy'); paint({ refs: false, bar: false }); } if (!timer) timer = setInterval(refresh, 2000); return; }
   if (action === 'studio-remove-ref') { removeRef(Number(button.dataset.index)); hidePeek(); paint({ editor: true }); return; }
   if (action === 'studio-generate') {
@@ -401,7 +415,8 @@ export async function studioAction(action, button) {
   }
   const id = button.dataset.id, item = data?.items.find(entry => entry.id === id);
   if (action === 'studio-reuse' && item) {
-    Object.assign(draft, { kind: item.kind, prompt: item.prompt, aspectRatio: item.aspectRatio, refs: item.refs.filter(ref => !ref.missing).map(ref => ({ id: ref.id, url: ref.url })) });
+    Object.assign(draft, { kind: item.kind, prompt: item.prompt.replace(/@音频\d+ ?/g, ''), aspectRatio: item.aspectRatio, audios: [], refs: item.refs.filter(ref => !ref.missing).map(ref => ({ id: ref.id, url: ref.url })) });
+    if (item.audios?.length) notify('参考音频只能在画布里连接，这次没有带上', true);
     if (item.kind === 'video') Object.assign(draft, { channel: item.channel, duration: item.duration, resolution: item.resolution });
     if (item.refs.some(ref => ref.missing)) { draft.prompt = draft.prompt.replace(/@图\d+ ?/g, ''); notify('原来的参考图已清理，请重新添加', true); }
     settle();

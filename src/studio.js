@@ -58,11 +58,15 @@ export function imageKind(bytes) {
 }
 
 // 提示词里的 @图1、@图2 对应参考图的顺序。tag(序号) 返回要替换成的文字。
-export function compileMentions(prompt, count, tag) {
+export function compileMentions(prompt, count, tag, audioCount = 0) {
   return String(prompt).replace(/@图(\d+)\s?/g, (_, digits) => {
     const index = Number(digits);
     if (index < 1 || index > count) fail(`提示词里的 @图${index} 没有对应的参考图，请先上传或删掉这个引用`);
     return tag(index);
+  }).replace(/@音频(\d+)/g, (whole, digits) => {
+    const index = Number(digits);
+    if (index < 1 || index > audioCount) fail(`提示词里的 @音频${index} 没有对应的参考音频，请先连上音频或删掉这个引用`);
+    return whole;
   }).trim();
 }
 
@@ -112,7 +116,7 @@ export class Studio {
       this.references.delete(id); await rm(join(this.root, reference.file), { force: true });
     }
     // 画布上的音视频素材：没有节点在用、又放了一天以上的，一起清掉。
-    const urls = new Set([...this.canvases.values()].flatMap(canvas => canvas.nodes.map(node => node.url)));
+    const urls = new Set([...[...this.canvases.values()].flatMap(canvas => canvas.nodes.map(node => node.url)), ...this.items.flatMap(item => (item.audios || []).map(audio => `/studio-media/${audio.file}`))]);
     for (const [id, clip] of this.clips) {
       if (urls.has(`/studio-media/${clip.file}`) || Date.now() - Date.parse(clip.createdAt) < 24 * 60 * 60 * 1000) continue;
       this.clips.delete(id); await rm(join(this.root, clip.file), { force: true });
@@ -155,6 +159,7 @@ export class Studio {
         id: item.id, kind: item.kind, prompt: item.prompt, createdAt: item.createdAt, label: item.label, model: item.model,
         channel: item.channel, duration: item.duration, resolution: item.resolution, aspectRatio: item.aspectRatio,
         refs: item.refs.map((ref, index) => ({ id: ref.id, name: `图${index + 1}`, url: `/studio-media/${ref.file}`, missing: !this.references.has(ref.id) })),
+        audios: (item.audios || []).map((audio, index) => ({ name: `音频${index + 1}`, url: `/studio-media/${audio.file}` })),
         job: { state: item.job.state, progress: item.job.progress || 0, message: item.job.message || '', error: item.job.error || '', canResume: Boolean(item.job.taskId) && ['failed', 'unknown'].includes(item.job.state) },
         result: item.result ? { url: `/studio-media/${item.result.file}`, file: item.result.file } : null,
       })),
@@ -182,8 +187,14 @@ export class Studio {
     const refs = ids.map(id => this.references.get(id) || fail('有参考图已失效，请重新上传'));
     for (const ref of refs) { try { await stat(join(this.root, ref.file)); } catch { fail('有参考图文件已丢失，请重新上传'); } }
     const aspectRatio = RATIOS.includes(input.aspectRatio) ? input.aspectRatio : '16:9';
-    compileMentions(prompt, refs.length, index => `图${index}`);
-    const item = { id: randomBytes(8).toString('hex'), kind, prompt, refs: refs.map(({ id, file }) => ({ id, file })), aspectRatio, createdAt: now(), job: { state: 'pending', progress: 0, operationId: randomUUID() } };
+    // 参考音频只给视频用，来自画布上的音频节点。
+    const audioFiles = kind === 'video' && Array.isArray(input.audioFiles) ? input.audioFiles.map(value => String(value).replace(/^\/studio-media\//, '')) : [];
+    if (new Set(audioFiles).size !== audioFiles.length) fail('同一段音频不用重复添加');
+    if (audioFiles.length > 3) fail('参考音频最多 3 段');
+    const clips = [...this.clips.values()], audios = audioFiles.map(file => clips.find(clip => clip.file === file && clip.kind === 'audio') || fail('有参考音频已失效，请重新连接'));
+    for (const audio of audios) { try { await stat(join(this.root, audio.file)); } catch { fail('有参考音频文件已丢失'); } }
+    compileMentions(prompt, refs.length, index => `图${index}`, audios.length);
+    const item = { id: randomBytes(8).toString('hex'), kind, prompt, refs: refs.map(({ id, file }) => ({ id, file })), audios: audios.map(({ id, file, name }) => ({ id, file, name })), aspectRatio, createdAt: now(), job: { state: 'pending', progress: 0, operationId: randomUUID() } };
     if (kind === 'video') {
       const channel = this.workflow.videoChannels().find(entry => entry.value === input.channel);
       if (!channel) fail('请先选择视频渠道；还没有的话到“设置 → 接口配置”里添加视频方案');
@@ -320,18 +331,24 @@ export class Studio {
         const images = await Promise.all(paths.map(path => localImageReference(path)));
         Object.assign(job, { state: 'submitting', message: '提交图片', submittedAt: now() }); await this.save();
         submitting = true;
-        task = await provider.submit({ prompt: compileMentions(item.prompt, paths.length, index => `图${index}`), aspectRatio: item.aspectRatio, images });
+        task = await provider.submit({ prompt: compileMentions(item.prompt, paths.length, index => `图${index}`, 0), aspectRatio: item.aspectRatio, images });
       } else {
         await workflow.checkVideoAvailability({ videoProviderId: item.providerId, videoModel: item.model });
         Object.assign(job, { state: 'running', message: '上传参考图' }); await this.save();
         const slots = [];
         for (const [index, path] of paths.entries()) slots.push({ ...(await provider.uploadImage(path)), index: index + 1, name: `图${index + 1}`, filename: item.refs[index].file });
-        const prompt = compileMentions(item.prompt, slots.length, index => workflow.videoTag(slots[index - 1], config));
+        const voices = [];
+        if ((item.audios || []).length) {
+          if (typeof provider.uploadAudio !== 'function') throw new Error('当前视频渠道不支持参考音频，请去掉音频或换一个渠道');
+          job.message = '上传参考音频'; await this.save();
+          for (const audio of item.audios) voices.push(await provider.uploadAudio(join(this.root, audio.file)));
+        }
+        const prompt = compileMentions(item.prompt, slots.length, index => workflow.videoTag(slots[index - 1], config), voices.length);
         Object.assign(job, { state: 'submitting', message: '提交视频', submittedAt: now() }); await this.save();
         submitting = true;
         task = await provider.submit({ model: item.model, prompt, duration: item.duration, aspectRatio: item.aspectRatio,
           resolution: config.protocol === 'openai-video' ? pixelSize(item.resolution, item.aspectRatio) : item.resolution,
-          referenceImages: slots.map(({ assetId }) => ({ assetId })), referenceAudios: [] });
+          referenceImages: slots.map(({ assetId }) => ({ assetId })), referenceAudios: voices.map(({ assetId }) => ({ assetId })) });
       }
       submitting = false;
       if (!job.taskId) job.taskId = task.id;
