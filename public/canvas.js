@@ -26,7 +26,7 @@ const refreshList = async () => { await loadList(); const stage = document.query
 // ---- 保存 ----
 function save(soon = true) {
   clearTimeout(saveTimer); if (!cv) return;
-  const push = () => { const current = cv; if (current) ctx.api(`/api/studio/canvases/${current.id}`, { method: 'PATCH', body: { title: current.title, view: current.view, nodes: current.nodes, edges: current.edges } }).catch(error => ctx.notify(`画布没保存上：${error.message}`, true)); };
+  const push = () => { const current = cv; if (current) ctx.api(`/api/studio/canvases/${current.id}`, { method: 'PATCH', body: { title: current.title, view: current.view, nodes: current.nodes, edges: current.edges, groups: current.groups } }).catch(error => ctx.notify(`画布没保存上：${error.message}`, true)); };
   if (soon) saveTimer = setTimeout(push, 500); else return push();
 }
 
@@ -36,7 +36,7 @@ function applyView(animate = false) {
   if (animate && !calm()) { world.classList.add('cv-anim'); setTimeout(() => world.classList.remove('cv-anim'), 320); }
   world.style.transform = `translate(${x}px,${y}px) scale(${k})`;
   root.style.backgroundPosition = `${x}px ${y}px`; root.style.backgroundSize = `${24 * k}px ${24 * k}px`;
-  $('.cv-zoom output').textContent = `${Math.round(k * 100)}%`;
+  $('.cv-zoom output').textContent = `${Math.round(k * 100)}%`; if (sel.size > 1) drawSelBox();
   placePanel(animate);
 }
 function zoomAt(next, clientX = innerWidth / 2, clientY = innerHeight / 2, animate = false) {
@@ -62,7 +62,7 @@ function nodeHTML(item, fresh = false) {
   const { escape, icon } = ctx;
   return `<div class="cv-node type-${item.type} ${sel.has(item.id) ? 'selected' : ''} ${fresh ? 'is-new' : ''}" data-node="${item.id}" style="left:${item.x}px;top:${item.y}px;width:${item.w}px"><div class="cv-node-label">${icon(item.type === 'video' ? 'play' : 'image', 12)}<span>${escape(item.label)}</span></div><div class="cv-node-body" data-key="${escape(bodyKey(item))}" style="aspect-ratio:${item.ratio || 16 / 9}">${bodyHTML(item)}</div>${item.type === 'image' ? `<button class="cv-handle" data-handle title="拉出连线，用这张图去生成" aria-label="拉出连线">${icon('plus', 13)}</button>` : ''}</div>`;
 }
-function drawNodes() { $('.cv-nodes').innerHTML = cv.nodes.map(item => nodeHTML(item)).join(''); drawEdges(); toggleEmpty(); }
+function drawNodes() { $('.cv-nodes').innerHTML = cv.nodes.map(item => nodeHTML(item)).join(''); drawEdges(); drawGroups(); toggleEmpty(); }
 function toggleEmpty() { $('.cv-empty').hidden = cv.nodes.length > 0; }
 const anchorOut = item => ({ x: item.x + item.w, y: item.y + LABEL + height(item) / 2 });
 const anchorIn = item => ({ x: item.x, y: item.y + LABEL + height(item) / 2 });
@@ -71,9 +71,25 @@ const tempEdges = (from, to) => from.map(id => { const d = curve(anchorOut(node(
 function drawEdges(extra = '') {
   $('.cv-edges').innerHTML = cv.edges.map(edge => { const from = node(edge.from), to = node(edge.to); if (!from || !to) return ''; const busy = activeJob(itemOf(to)?.job), lit = sel.has(from.id) || sel.has(to.id); const d = curve(anchorOut(from), anchorIn(to)); return `<path class="${lit ? 'lit' : ''}" d="${d}"/>${busy || lit ? `<path class="glow ${busy ? 'fast' : ''}" d="${d}"/>` : ''}`; }).join('') + extra;
 }
+// ---- 分组和多选框 ----
+function boundsOf(ids) {
+  const items = ids.map(node).filter(Boolean); if (!items.length) return null;
+  return { l: Math.min(...items.map(item => item.x)), t: Math.min(...items.map(item => item.y)), r: Math.max(...items.map(item => item.x + item.w)), b: Math.max(...items.map(item => item.y + LABEL + height(item))) };
+}
+const groupOfSelection = () => cv.groups.find(group => group.nodes.length === sel.size && group.nodes.every(id => sel.has(id)));
+function drawGroups() {
+  $('.cv-groups').innerHTML = cv.groups.map(group => { const box = boundsOf(group.nodes); return box ? `<div class="cv-group" data-group="${group.id}" style="left:${box.l - 30}px;top:${box.t - 44}px;width:${box.r - box.l + 60}px;height:${box.b - box.t + 74}px"><span class="cv-group-label" title="双击改名">${ctx.escape(group.label)}</span></div>` : ''; }).join('');
+}
+function drawSelBox() {
+  const box = $('.cv-selbox'), area = sel.size > 1 ? boundsOf([...sel]) : null;
+  if (!area) { box.hidden = true; return; }
+  const { icon } = ctx, images = [...sel].some(id => node(id)?.type === 'image'), grouped = groupOfSelection(), inverse = 1 / cv.view.k;
+  box.hidden = false; box.style.cssText = `left:${area.l - 18}px;top:${area.t - 14}px;width:${area.r - area.l + 36}px;height:${area.b - area.t + 32}px`;
+  box.innerHTML = `<div class="cv-seltools" style="transform:scale(${inverse})"><span>已选 ${sel.size} 个</span><button data-action="${grouped ? 'canvas-ungroup' : 'canvas-group'}">${icon('copy', 13)}${grouped ? '解组' : '打组'}</button><button data-action="canvas-delete-selected">${icon('trash', 13)}删除</button></div>${images ? `<button class="cv-handle multi" data-handle-multi style="transform:scale(${inverse})" title="把选中的图片一起连出去" aria-label="一起拉出连线">${icon('plus', 13)}</button>` : ''}`;
+}
 function paintSelection() {
   for (const element of root.querySelectorAll('.cv-node')) element.classList.toggle('selected', sel.has(element.dataset.node));
-  drawEdges(); bind();
+  drawEdges(); drawSelBox(); bind();
 }
 // 生成进度、成片回来时只更新变了的节点。
 function updateNodes() {
@@ -94,7 +110,7 @@ function updateNodes() {
 // 图片、视频加载出来后按真实比例调整节点高度。
 function watchMedia(scope, item) {
   const media = scope.querySelector('img,video'); if (!media) return;
-  const adopt = () => { const w = media.naturalWidth || media.videoWidth, h = media.naturalHeight || media.videoHeight; if (!w || !h) return; const ratio = w / h; if (Math.abs(ratio - item.ratio) < .01) return; item.ratio = ratio; const body = root?.querySelector(`[data-node="${item.id}"] .cv-node-body`); if (body) body.style.aspectRatio = ratio; drawEdges(); placePanel(); save(); };
+  const adopt = () => { const w = media.naturalWidth || media.videoWidth, h = media.naturalHeight || media.videoHeight; if (!w || !h) return; const ratio = w / h; if (Math.abs(ratio - item.ratio) < .01) return; item.ratio = ratio; const body = root?.querySelector(`[data-node="${item.id}"] .cv-node-body`); if (body) body.style.aspectRatio = ratio; drawEdges(); drawGroups(); drawSelBox(); placePanel(); save(); };
   if (media.complete || media.readyState >= 1) adopt(); media.addEventListener(media.tagName === 'IMG' ? 'load' : 'loadedmetadata', adopt, { once: true });
 }
 
@@ -181,7 +197,8 @@ function removeSelected() {
   if (busy.length && !confirm('有节点还在生成。删掉节点不会取消任务，成片仍会出现在“创作”的作品里。继续删除？')) return;
   cv.nodes = cv.nodes.filter(item => !sel.has(item.id)); cv.edges = cv.edges.filter(edge => !sel.has(edge.from) && !sel.has(edge.to));
   for (const id of sel) root.querySelector(`[data-node="${id}"]`)?.remove();
-  sel.clear(); paintSelection(); toggleEmpty(); save();
+  cv.groups = cv.groups.map(group => ({ ...group, nodes: group.nodes.filter(id => !sel.has(id)) })).filter(group => group.nodes.length);
+  sel.clear(); drawGroups(); paintSelection(); toggleEmpty(); save();
 }
 function createFromMenu(kind) {
   const state = menuState; closeMenu(); menuState = null; if (!state) return;
@@ -205,17 +222,20 @@ function closeMenu() { const menu = $('.cv-menu'); if (menu && !menu.hidden) { m
 // ---- 鼠标：拖动画面、框选、移动节点、拉线 ----
 function onDown(event) {
   last.x = event.clientX; last.y = event.clientY;
-  if (event.target.closest('.cv-panel,.cv-top,.cv-zoom,.cv-dock,.cv-menu,.cv-empty button')) return;
+  if (event.target.closest('.cv-panel,.cv-top,.cv-zoom,.cv-dock,.cv-menu,.cv-empty button,.cv-seltools')) return;
   closeMenu();
-  const element = event.target.closest('.cv-node'), id = element?.dataset.node;
+  const groupElement = event.target.closest('.cv-group'), group = groupElement && cv.groups.find(entry => entry.id === groupElement.dataset.group);
+  if (group && event.button === 0 && !space) { if (!event.shiftKey) sel.clear(); for (const member of group.nodes) sel.add(member); paintSelection(); }
+  const element = event.target.closest('.cv-node') || (group && root.querySelector(`[data-node="${group.nodes[0]}"]`)), id = element?.dataset.node;
   if (event.button === 1 || (event.button === 0 && space)) { event.preventDefault(); drag = { kind: 'pan', x: event.clientX, y: event.clientY, vx: cv.view.x, vy: cv.view.y }; root.classList.add('grabbing'); }
   else if (event.button !== 0) return;
+  else if (event.target.closest('[data-handle-multi]')) { drag = { kind: 'link', multi: true, from: [...sel].filter(other => node(other)?.type === 'image'), x: event.clientX, y: event.clientY, moved: false }; root.classList.add('linking'); }
   else if (event.target.closest('[data-handle]')) { const from = sel.has(id) ? [...sel].filter(other => node(other)?.type === 'image') : [id]; drag = { kind: 'link', from, x: event.clientX, y: event.clientY, moved: false }; root.classList.add('linking'); }
   else if (element) {
     if (event.target.tagName === 'VIDEO' && sel.has(id) && sel.size === 1) return;
-    const was = sel.has(id);
-    if (!was) { if (!event.shiftKey) sel.clear(); sel.add(id); paintSelection(); }
-    drag = { kind: 'move', id, was, shift: event.shiftKey, x: event.clientX, y: event.clientY, moved: false, start: [...sel].map(other => { const item = node(other); return { item, x: item.x, y: item.y, element: root.querySelector(`[data-node="${other}"]`) }; }) };
+    const was = sel.has(id) || Boolean(group);
+    if (!sel.has(id)) { if (!event.shiftKey) sel.clear(); sel.add(id); paintSelection(); }
+    drag = { kind: 'move', id, was, group: Boolean(group), shift: event.shiftKey, x: event.clientX, y: event.clientY, moved: false, start: [...sel].map(other => { const item = node(other); return { item, x: item.x, y: item.y, element: root.querySelector(`[data-node="${other}"]`) }; }) };
   } else { drag = { kind: 'marquee', x: event.clientX, y: event.clientY, moved: false, base: event.shiftKey ? new Set(sel) : new Set() }; document.activeElement?.blur?.(); }
   if (drag) { root.setPointerCapture(event.pointerId); if (drag.kind !== 'move' || event.target.tagName !== 'VIDEO') event.preventDefault(); }
 }
@@ -227,13 +247,14 @@ function onMove(event) {
   if (!drag.moved) return;
   if (drag.kind === 'move') {
     for (const entry of drag.start) { entry.item.x = entry.x + dx / cv.view.k; entry.item.y = entry.y + dy / cv.view.k; entry.element.style.left = `${entry.item.x}px`; entry.element.style.top = `${entry.item.y}px`; }
-    root.classList.add('moving'); drawEdges(); placePanel();
+    root.classList.add('moving'); drawEdges(); drawGroups(); drawSelBox(); placePanel();
   } else if (drag.kind === 'marquee') {
     const box = $('.cv-marquee'), left = Math.min(drag.x, event.clientX), top = Math.min(drag.y, event.clientY), width = Math.abs(dx), tall = Math.abs(dy);
     box.hidden = false; box.style.cssText = `left:${left}px;top:${top}px;width:${width}px;height:${tall}px`;
     const a = toWorld(left, top), b = toWorld(left + width, top + tall); sel.clear(); for (const id of drag.base) sel.add(id);
     for (const item of cv.nodes) if (item.x < b.x && item.x + item.w > a.x && item.y < b.y && item.y + LABEL + height(item) > a.y) sel.add(item.id);
     for (const element of root.querySelectorAll('.cv-node')) element.classList.toggle('selected', sel.has(element.dataset.node));
+    drawSelBox();
   } else if (drag.kind === 'link') {
     const to = toWorld(event.clientX, event.clientY), over = document.elementFromPoint(event.clientX, event.clientY)?.closest?.('.cv-node');
     for (const element of root.querySelectorAll('.cv-node.target')) element.classList.remove('target');
@@ -247,6 +268,7 @@ function onUp(event) {
   if (current.kind === 'pan') return save();
   if (current.kind === 'move') {
     if (current.moved) return save();
+    if (current.group) return paintSelection();
     if (current.shift && current.was) sel.delete(current.id); else if (!current.shift && sel.size > 1) { sel.clear(); sel.add(current.id); }
     return paintSelection();
   }
@@ -260,7 +282,7 @@ function onUp(event) {
     }
     if (over && current.moved) return drawEdges();
     // 松手在空白处：线先留着，弹出菜单选要生成什么。
-    const point = current.moved ? { x: event.clientX, y: event.clientY } : (() => { const out = anchorOut(node(current.from[0])); return { x: cv.view.x + (out.x + 90) * cv.view.k, y: cv.view.y + out.y * cv.view.k }; })();
+    const point = current.moved ? { x: event.clientX, y: event.clientY } : (() => { const area = current.multi && boundsOf(current.from), out = area ? { x: area.r + 18, y: (area.t + area.b) / 2 } : anchorOut(node(current.from[0])); return { x: cv.view.x + (out.x + 90) * cv.view.k, y: cv.view.y + out.y * cv.view.k }; })();
     openMenu(point.x, point.y, current.from);
     drawEdges(tempEdges(current.from, toWorld(point.x, point.y)));
   }
@@ -290,11 +312,11 @@ addEventListener('resize', () => { if (cv) placePanel(); });
 
 // ---- 打开、关闭 ----
 function open(canvas) {
-  cv = canvas; sel.clear(); bound = null;
+  cv = canvas; cv.groups ||= []; sel.clear(); bound = null;
   if (!cv.nodes.length && !cv.view.x && !cv.view.y) cv.view = { x: innerWidth / 2 - 160, y: innerHeight / 2 - 160, k: 1 };
   const { escape, icon } = ctx;
   root = document.createElement('div'); root.className = 'cv'; root.tabIndex = -1;
-  root.innerHTML = `<div class="cv-world"><svg class="cv-edges" aria-hidden="true"></svg><div class="cv-nodes"></div></div><div class="cv-marquee" hidden></div>
+  root.innerHTML = `<div class="cv-world"><div class="cv-groups"></div><svg class="cv-edges" aria-hidden="true"></svg><div class="cv-nodes"></div><div class="cv-selbox" hidden></div></div><div class="cv-marquee" hidden></div>
 <div class="cv-top"><button class="cv-back" data-action="canvas-close" title="返回">${icon('arrow', 15)}</button><input class="cv-title" value="${escape(cv.title)}" maxlength="60" aria-label="画布名称" spellcheck="false"></div>
 <div class="cv-empty"><p>双击画布添加节点</p><div><button data-action="canvas-add" data-kind="image">${icon('image', 15)}图片生成</button><button data-action="canvas-add" data-kind="video">${icon('play', 15)}视频生成</button><button data-action="canvas-add" data-kind="upload">${icon('upload', 15)}上传图片</button></div></div>
 <div class="cv-panel studio-composer" hidden></div><div class="cv-menu" hidden></div>
@@ -305,7 +327,10 @@ function open(canvas) {
   root.addEventListener('wheel', onWheel, { passive: false });
   root.addEventListener('dblclick', event => {
     const under = document.elementFromPoint(event.clientX, event.clientY), element = under?.closest('.cv-node');
-    if (under?.closest('.cv-panel,.cv-top,.cv-zoom,.cv-dock,.cv-menu,.cv-empty button')) return;
+    if (under?.closest('.cv-panel,.cv-top,.cv-zoom,.cv-dock,.cv-menu,.cv-empty button,.cv-seltools')) return;
+    const label = under?.closest('.cv-group-label'), named = label && cv.groups.find(entry => entry.id === label.parentElement.dataset.group);
+    if (named) { const next = prompt('分组名称', named.label); if (next !== null) { named.label = next.trim().slice(0, 40) || named.label; drawGroups(); save(); } return; }
+    if (under?.closest('.cv-group') && !under.closest('.cv-node')) return;
     if (element) { const image = element.querySelector('.cv-node-body img'); if (image && image.getAttribute('src') !== BLANK) ctx.openImage(image); return; }
     openMenu(event.clientX, event.clientY);
   });
@@ -327,6 +352,14 @@ export async function canvasAction(action, button) {
   if (action === 'canvas-delete') { if (!confirm('删除这张画布？已生成的图片和视频仍保留在“创作”的作品里。')) return; await api(`/api/studio/canvases/${encodeURIComponent(button.dataset.id)}`, { method: 'DELETE' }); return refreshList(); }
   if (!cv) return;
   if (action === 'canvas-close') return close();
+  if (action === 'canvas-group') {
+    if (sel.size < 2) return;
+    // 一个节点只属于一个组：先从原来的组里拿出来。
+    cv.groups = cv.groups.map(group => ({ ...group, nodes: group.nodes.filter(id => !sel.has(id)) })).filter(group => group.nodes.length);
+    cv.groups.push({ id: uid(), label: `分组 ${cv.groups.length + 1}`, nodes: [...sel] }); drawGroups(); drawSelBox(); return save();
+  }
+  if (action === 'canvas-ungroup') { const group = groupOfSelection(); if (group) { cv.groups = cv.groups.filter(entry => entry !== group); drawGroups(); drawSelBox(); save(); } return; }
+  if (action === 'canvas-delete-selected') return removeSelected();
   if (action === 'canvas-zoom') { const dir = button.dataset.dir; return dir === 'fit' ? fit() : zoomAt(cv.view.k * (dir === 'in' ? 1.25 : .8), innerWidth / 2, innerHeight / 2, true); }
   if (action === 'canvas-add') {
     if (!menuState) { const rect = button.closest('.cv-dock,.cv-empty') ? { x: innerWidth / 2 + (cv.nodes.length % 6) * 26 - 160, y: innerHeight / 2 + (cv.nodes.length % 6) * 26 - 60 } : { x: last.x, y: last.y }; menuState = { clientX: rect.x, clientY: rect.y, from: null }; }

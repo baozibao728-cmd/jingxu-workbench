@@ -137,7 +137,9 @@ test('画布：保存时清洗字段，生成图可以转成参考图，参考�
       { id: 'node01', type: 'image', source: 'upload', x: 5, y: 6, w: 9999, refId: ref.id, url: ref.url, prompt: 'x'.repeat(9000) },
       { id: 'node02', type: 'video', x: 1, y: 2, settings: { aspectRatio: '4:3', duration: 15 }, url: 'https://evil.example/a.png' },
       { id: 'node01', type: 'image' }, { id: '../bad' }, null,
-    ], edges: [{ from: 'node01', to: 'node02' }, { from: 'node01', to: 'node02' }, { from: 'node01', to: 'node01' }, { from: 'ghost', to: 'node02' }] });
+    ], edges: [{ from: 'node01', to: 'node02' }, { from: 'node01', to: 'node02' }, { from: 'node01', to: 'node01' }, { from: 'ghost', to: 'node02' }],
+      groups: [{ id: 'group01', label: '  人物  ', nodes: ['node01', 'node02', 'ghost'] }, { id: 'group02', nodes: ['node01'] }, { id: 'bad id', nodes: ['node02'] }] });
+    assert.deepEqual(saved.groups, [{ id: 'group01', label: '人物', nodes: ['node01', 'node02'] }]);
     assert.equal(saved.nodes.length, 2); assert.equal(saved.nodes[0].w, 900); assert.equal(saved.nodes[0].prompt.length, 8000);
     assert.equal(saved.nodes[1].url, ''); assert.equal(saved.nodes[1].settings.aspectRatio, '16:9');
     assert.deepEqual(saved.edges, [{ from: 'node01', to: 'node02' }]); assert.deepEqual(saved.view, { x: 10, y: 0, k: 3 });

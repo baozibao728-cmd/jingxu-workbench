@@ -631,3 +631,14 @@ html[data-theme=dark] .cv{--cv-bg:#191919;--cv-dot:rgba(255,255,255,.055);--cv-n
 .cv-panel .studio-box:focus-within{border-color:var(--cv-edge);box-shadow:var(--cv-shadow)}
 .cv .studio-send:hover:not(:disabled){background:var(--cv-select);color:var(--cv-bg)}
 @media(prefers-reduced-motion:reduce){.cv-edges path.glow{animation:none;stroke-dasharray:none;opacity:.5}}
+.cv-groups{position:absolute;left:0;top:0}
+.cv-group{position:absolute;border-radius:22px;background:color-mix(in srgb,var(--cv-node) 62%,transparent);border:1px solid var(--cv-line);cursor:grab;transition:background .2s}
+.cv-group:hover{background:color-mix(in srgb,var(--cv-node) 82%,transparent)}
+.cv-group-label{position:absolute;left:16px;top:11px;font-size:12px;color:var(--muted);white-space:nowrap;cursor:text}
+.cv-selbox{position:absolute;border:1px dashed var(--cv-edge-lit);border-radius:14px;background:color-mix(in srgb,var(--cv-edge) 12%,transparent);pointer-events:none;animation:fade-in .16s}
+.cv-selbox[hidden]{display:none}
+.cv-seltools{position:absolute;left:0;bottom:calc(100% + 10px);transform-origin:bottom left;display:flex;align-items:center;gap:2px;padding:4px;border-radius:12px;background:var(--glass-strong);border:1px solid var(--line);box-shadow:var(--cv-shadow);pointer-events:auto;white-space:nowrap}
+.cv-seltools span{font-size:11px;color:var(--muted);padding:0 8px}
+.cv-seltools button{border:0;background:transparent;padding:7px 10px;border-radius:8px;font-size:12px}
+.cv-handle.multi{opacity:1;transform:none;right:-36px;top:calc(50% - 13px);pointer-events:auto;transform-origin:center}
+.cv.grab .cv-group,.cv.grab .cv-selbox *{pointer-events:none}

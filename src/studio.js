@@ -34,9 +34,17 @@ export function cleanCanvas(input = {}, previous = {}) {
     if (!ids.has(raw?.from) || !ids.has(raw?.to) || raw.from === raw.to || seen.has(key)) continue;
     seen.add(key); edges.push({ from: raw.from, to: raw.to });
   }
+  const groups = [], grouped = new Set();
+  for (const raw of Array.isArray(input.groups) ? input.groups.slice(0, 100) : []) {
+    if (!raw || typeof raw !== 'object' || !/^[a-z0-9]{6,20}$/.test(raw.id) || groups.some(group => group.id === raw.id)) continue;
+    const members = [...new Set(Array.isArray(raw.nodes) ? raw.nodes : [])].filter(id => ids.has(id) && !grouped.has(id));
+    if (!members.length) continue;
+    for (const id of members) grouped.add(id);
+    groups.push({ id: raw.id, label: text(raw.label, 40).trim() || '分组', nodes: members });
+  }
   const view = input.view && typeof input.view === 'object' ? input.view : {};
   return { id: previous.id, title: text(input.title ?? previous.title, 60).trim() || '未命名画布', createdAt: previous.createdAt || now(), updatedAt: now(),
-    view: { x: number(view.x, -1e7, 1e7, 0), y: number(view.y, -1e7, 1e7, 0), k: number(view.k, .1, 3, 1) }, nodes, edges };
+    view: { x: number(view.x, -1e7, 1e7, 0), y: number(view.y, -1e7, 1e7, 0), k: number(view.k, .1, 3, 1) }, nodes, edges, groups };
 }
 
 export function imageKind(bytes) {
