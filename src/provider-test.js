@@ -56,6 +56,20 @@ async function testMedia(profile,service,fetchImpl){
  if(profile.protocol==='grsai')queries.push(`/v1/api/result?id=${PROBE_ID}`);
  else if(profile.protocol==='json'){if(profile.adapter?.queryPath)queries.push(profile.adapter.queryPath.replaceAll('{id}',PROBE_ID));}
  else if(profile.protocol!=='openai-images')queries.push(`/v1/videos/${PROBE_ID}`);
+ if(profile.protocol==='huimiao'){
+  // 惠喵：GET /v1/models 和 /v1/balance 都免费，顺便报出所选模型的真实能力和积分余额。
+  const list=await call(profile,'/v1/models',{fetchImpl});
+  const refused=rejected(list);if(refused)return refused;
+  if(list.status!==200)return fail(`惠喵返回 HTTP ${list.status}，请核对地址（分站用户填自己分站的域名）`);
+  const models=Array.isArray(list.payload?.data)?list.payload.data:[];
+  const entry=models.find(item=>item?.id===profile.model);
+  const b=await call(profile,'/v1/balance',{fetchImpl});
+  const available=b.payload?.available??b.payload?.available_credits??b.payload?.balance;
+  const balance=b.status===200&&Number.isFinite(Number(available))?`可用积分 ${Number(available).toLocaleString('zh-CN',{maximumFractionDigits:2})}。`:'';
+  if(!entry)return {level:'reachable',message:`Key 有效，但惠喵现在没有开放 ${profile.model}。可用模型：${models.map(item=>item.id).filter(Boolean).slice(0,20).join('、')||'无'}。${balance}${note}`};
+  const caps=`时长 ${entry.min_duration}～${entry.max_duration} 秒，清晰度 ${(entry.supported_resolutions||[entry.resolution]).filter(Boolean).join('/')}，最多 ${entry.max_images} 张参考图、${entry.max_audios} 段参考音频`;
+  return {level:'ok',message:`Key 有效，${entry.name||profile.model}：${caps}。清晰度和时长请和“视频参数”里保持一致。${balance}${note}`};
+ }
  if(profile.protocol==='scenetra'){
   // Scenetra：GET /api/v1/models 免费，能验证 Key，也能看所选模型是否开放 API。
   const list=await call(profile,'/api/v1/models',{fetchImpl});

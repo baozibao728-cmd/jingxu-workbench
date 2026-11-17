@@ -3,10 +3,10 @@
 // （uguu.se 3 小时后自动删除；连不上时用 tmpfiles.org，1 小时后删除），拿到地址再提交。
 // 每个模型的参数名、引用写法、时长和清晰度都不一样，下面按 Scenetra 的 OpenAPI 文档逐个写明。
 import { readFile, rm } from 'node:fs/promises';
-import { basename, join } from 'node:path';
+import { basename } from 'node:path';
 import { tmpdir } from 'node:os';
-import { createHash, randomUUID } from 'node:crypto';
-import { ffmpegTools } from './ffmpeg-tools.js';
+import { createHash } from 'node:crypto';
+import { audioForUpload } from './media-clips.js';
 
 const SEEDANCE_ASPECTS = ['adaptive', '21:9', '16:9', '4:3', '1:1', '3:4', '9:16'];
 const seedance = (label, t2v, ref, maxImages, maxAudios, max, resolutions, audioNeedsImage = true) => ({ label, t2v, ref, audioNeedsImage, images: 'reference_images', audios: 'reference_audios', maxImages, maxAudios,
@@ -83,12 +83,8 @@ export const TEMP_HOSTS = [
 const hosted = new Map();
 
 export async function hostTemporarily(path, { fetchImpl = fetch, hosts = TEMP_HOSTS, kind = 'image' } = {}) {
-  let file = path, cleanup = null;
-  if (kind === 'audio' && !AUDIO_TYPES[extension(path)]) {
-    // Scenetra 的参考音频只收 wav / mp3：画布里截出来的 m4a 先转成 mp3。
-    file = join(tmpdir(), `jingxu-audio-${randomUUID()}.mp3`); cleanup = file;
-    await ffmpegTools.run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-i', path, '-vn', '-c:a', 'libmp3lame', '-b:a', '192k', '-y', file], { timeout: 5 * 60 * 1000 });
-  }
+  // Scenetra 的参考音频只收 wav / mp3：画布里截出来的 m4a 先转成 mp3。
+  const { file, cleanup } = kind === 'audio' ? await audioForUpload(path, tmpdir()) : { file: path, cleanup: null };
   try {
     const bytes = await readFile(file);
     const type = (kind === 'audio' ? AUDIO_TYPES : IMAGE_TYPES)[extension(file)];

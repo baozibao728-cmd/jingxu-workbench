@@ -6,6 +6,7 @@ import { localImageReference } from './providers.js';
 import { validateVideoSettings } from './video-profile.js';
 import { normalizeUpload, splitMedia, trimAudio } from './media-clips.js';
 import { scenetraAudioTag } from './scenetra.js';
+import { huimiaoAudioTag } from './huimiao.js';
 
 // 自由创作：不经过剧本和分镜，直接用一段提示词加参考图生成视频或图片。
 // 数据单独放在 _studio 目录，不属于任何项目，也不进项目导出包。
@@ -347,6 +348,7 @@ export class Studio {
         let prompt = compileMentions(item.prompt, slots.length, index => workflow.videoTag(slots[index - 1], config), voices.length);
         // Scenetra 各模型引用音频的写法不同（@Audio1、Audio 1……），在这里换成对应写法。
         if (config.protocol === 'scenetra') prompt = prompt.replace(/@音频(\d+)/g, (_, digits) => scenetraAudioTag(item.model, Number(digits)));
+        if (config.protocol === 'huimiao') prompt = prompt.replace(/@音频(\d+)/g, (_, digits) => huimiaoAudioTag(Number(digits)));
         Object.assign(job, { state: 'submitting', message: '提交视频', submittedAt: now() }); await this.save();
         submitting = true;
         task = await provider.submit({ model: item.model, prompt, duration: item.duration, aspectRatio: item.aspectRatio,

@@ -325,3 +325,11 @@ npm start
 - 参考素材：`hostTemporarily` 先传 uguu.se，失败重试一次后换 tmpfiles.org（转成 `/dl/` 直链）；同内容在有效期 60% 内复用。返回的 `expiresAt` 也写进工作流的 `upload-cache.json`，过期后重新上传。
 - 连接测试只 `GET /api/v1/models`，看所选模型的两个端点是否开放，不提交生成。测试在 `test/scenetra.test.js`，全部用假的 Scenetra 和假的图床。
 
+## 惠喵视频渠道与悟空文本预设（2026-11-17 新增）
+
+- `src/huimiao.js`：协议名 `huimiao`，按 `https://huimiaovip.com/docs/api-guide.md` 写。上传：`POST /v1/uploads/presign` → 对 `put_url` 原样带 `headers` 做 PUT（不带 Key）→ `POST /v1/uploads/complete`，返回的 `object_key` 作为 assetId（缓存 1 小时）。音频先经 `audioForUpload` 转 mp3，并用 ffprobe 读时长填 `duration_ms`（至少 2 秒）。
+- 提交 `POST /v1/videos/generations`，字段 `model/prompt/duration/resolution/ratio/asset_keys/audio_asset_keys`，每次一个新的 `Idempotency-Key`；状态 `queued/in_progress/completed/failed`。下载 `GET /v1/videos/{id}/content`，手动跟随跳转，跨域不带 Key，`409 video_preparing` 按 Retry-After 重试。
+- 提示词引用写成 `参考图N`、`参考音频N`（文档示例写法）。`HUIMIAO_MODELS` 是文档 9B 节的 7 个模型快照（时长、参考上限）；清晰度取方案“视频参数”里填的值。表外的模型 ID 全部用方案里填的参数。
+- 连接测试读 `/v1/models` 和 `/v1/balance`，报出所选模型的真实时长、清晰度、参考上限和积分。
+- 悟空 API 只是文本预设（`openai-chat`，`https://wkapi.work` + `/v1/chat/completions`），没有新代码。
+

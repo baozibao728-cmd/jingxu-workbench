@@ -66,3 +66,12 @@ export async function trimAudio(input, start, end, outputBase) {
   await ffmpeg(['-ss', from.toFixed(3), '-i', input, '-t', (to - from).toFixed(3), '-map', '0:a:0', '-vn', '-c:a', 'aac', '-b:a', '192k'], output);
   return { output, ...(await probeMedia(output)) };
 }
+
+// 只收 mp3 / wav 的厂商（Scenetra、惠喵）：其他格式先转成 mp3，返回要上传的文件和用完要删的临时文件。
+export async function audioForUpload(path, temporaryDir) {
+  if (/\.(mp3|wav)$/i.test(path)) return { file: path, cleanup: null };
+  const { join } = await import('node:path'), { randomUUID } = await import('node:crypto');
+  const file = join(temporaryDir, `jingxu-audio-${randomUUID()}.mp3`);
+  await ffmpeg(['-i', path, '-vn', '-c:a', 'libmp3lame', '-b:a', '192k'], file);
+  return { file, cleanup: file };
+}
