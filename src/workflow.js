@@ -489,6 +489,17 @@ export class Workflow {
       await checkpoint();
     }
   }
+  // 任务已提交后查询进度：偶尔断网、厂商 5xx 或限流不算失败，隔一会儿再查；连续失败太多次才放弃（任务号还在，可以“继续查询”）。
+  async pollTask(provider, id, { tries = 36 } = {}) {
+    for (let attempt = 1; ; attempt++) {
+      try { return await provider.getTask(id); }
+      catch (error) {
+        const transient = !error.status || error.status === 429 || error.status >= 500;
+        if (!transient || attempt >= tries || this.stopping) throw error;
+        await pause(this.intervalMs);
+      }
+    }
+  }
   errorText(error) {
     // 图片、视频提交可能已在服务端建任务：保持谨慎提示，但带上中断原因（超时、网络、非JSON），不再只剩一句话。
     if (error.submissionUnknown) return `提交结果暂不明确${error.detail ? `（${clean(error.detail, 160)}）` : ''}，请先核对服务端任务，避免重复生成`;
@@ -520,7 +531,7 @@ export class Workflow {
     try {
       let task;
       if(asset.job.result?.status==='completed')task=asset.job.result;
-      else if (asset.job.taskId) task = await provider.getTask(asset.job.taskId);
+      else if (asset.job.taskId) task = await this.pollTask(provider, asset.job.taskId);
       else {
         if (asset.kind === 'character') { asset.aspectRatio = '16:9'; asset.job.outputLayout = CHARACTER_SHEET_LAYOUT; }
         asset.job.submittedPrompt = buildAssetImagePrompt(asset, project.style, { characterPencil: project.characterPencil === true }); await this.store.save(project);
@@ -544,7 +555,7 @@ export class Workflow {
           this.store.log(project, `${asset.name} 图片已完成。`, 'success', asset.id); await this.store.save(project); return;
         }
         if (Date.now() > deadline) throw new Error('查询等待较久，可继续查询原任务');
-        await pause(this.intervalMs); task = await provider.getTask(asset.job.taskId);
+        await pause(this.intervalMs); task = await this.pollTask(provider, asset.job.taskId);
       }
     } catch (error) {
       asset.job.state = error.submissionUnknown && !asset.job.taskId ? 'unknown' : 'failed';
@@ -785,7 +796,7 @@ export class Workflow {
     try {
       let task;
       if(shot.job.result?.status==='completed')task=shot.job.result;
-      else if (shot.job.taskId) task = await provider.getTask(shot.job.taskId);
+      else if (shot.job.taskId) task = await this.pollTask(provider, shot.job.taskId);
       else {
         if(shot.continuityReview?.state==='required')throw Error('前序分镜已变化，请先对齐衔接再重新确认视频');
         if (shot.job.approvalMode === 'automatic' && !project.skipReview) throw new Error('全自动已关闭，此视频尚未提交，请手动确认');
@@ -836,7 +847,7 @@ export class Workflow {
           this.store.log(project, `${shot.title} 视频已下载。`, 'success', shot.id); await this.store.save(project); return;
         }
         if (Date.now() > deadline) throw new Error('等待时间较长，可继续查询原视频任务');
-        await pause(this.intervalMs); task = await provider.getTask(shot.job.taskId);
+        await pause(this.intervalMs); task = await this.pollTask(provider, shot.job.taskId);
       }
     } catch (error) {
       const retryCount = Number(shot.job.retryCount || 0);

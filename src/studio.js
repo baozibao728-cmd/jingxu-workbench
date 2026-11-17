@@ -328,7 +328,7 @@ export class Studio {
       const paths = item.refs.map(ref => join(this.root, ref.file));
       let task;
       if (job.result?.status === 'completed') task = job.result;
-      else if (job.taskId) task = await provider.getTask(job.taskId);
+      else if (job.taskId) task = await workflow.pollTask(provider, job.taskId);
       else if (item.kind === 'image') {
         const images = await Promise.all(paths.map(path => localImageReference(path)));
         Object.assign(job, { state: 'submitting', message: '提交图片', submittedAt: now() }); await this.save();
@@ -374,7 +374,7 @@ export class Studio {
           await this.save(); return;
         }
         if (Date.now() > deadline) throw new Error('等待时间较长，可以点“继续查询”接着等原任务');
-        await pause(this.intervalMs); task = await provider.getTask(job.taskId);
+        await pause(this.intervalMs); task = await workflow.pollTask(provider, job.taskId);
       }
     } catch (error) {
       job.state = error.submissionUnknown && !job.taskId ? 'unknown' : 'failed';
