@@ -8,6 +8,8 @@ if(!$('space')||!$('galaxy'))return;
 const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
 let still=false;try{still=localStorage.getItem('drama-backdrop')==='static'}catch(e){}
 let calm=reduced||still;
+// paced：这一帧是工作台故意放慢的（滚动时），不拿来判断显卡快慢。
+let paced=false;
 // 深色背景（GPU 着色器）：流体般的星云、三层视差星空、带大气层的行星、流星，鼠标附近有引力透镜般的扭曲
 const SPACE=(()=>{
   const c=$('space'),gl=c&&c.getContext('webgl',{antialias:false,alpha:false,depth:false,powerPreference:'high-performance'});
@@ -228,12 +230,18 @@ void main(){if(uDay>.5)dayMain();else nightMain();}
   const loc=gl.getAttribLocation(pg,'a');gl.enableVertexAttribArray(loc);gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
   const U={};for(const k of ['uRes','uTime','uMouse','uPtr','uLens','uMet','uGain','uSun','uB','uBc','uDay'])U[k]=gl.getUniformLocation(pg,k);
   const BB=new Float32Array(36),BC=new Float32Array(36);
-  let scale=Math.min(devicePixelRatio||1,1.5),frames=0,acc=0,lens=0,met=null,next=2,gain=1;
+  // 清晰度：最高按屏幕像素的 1.5 倍画，太卡时往下降，但最低也按 1 倍画，不会糊成一片。
+  const top=Math.min(devicePixelRatio||1,1.5),floor=Math.min(top,1);
+  let scale=top,frames=0,acc=0,lens=0,met=null,next=2,gain=1;
   const fit=()=>{const w=Math.round(innerWidth*scale),h=Math.round(innerHeight*scale);if(c.width!==w||c.height!==h){c.width=w;c.height=h;gl.viewport(0,0,w,h)}};
   function draw(dt,time,mx,my,px,py,sys,day){
     fit();
-    // 太卡就自动降分辨率
-    if(dt>0){acc+=dt;if(++frames===90){if(acc/frames>.024&&scale>.6){scale=Math.max(.6,scale*.8);fit()}frames=0;acc=0}}
+    // 太卡就自动降分辨率。工作台本来就限在约 30 帧（一帧约 33 毫秒），所以平均一帧超过 45 毫秒才算卡；
+    // 原来按 24 毫秒判断，30 帧下永远“卡”，几秒内就把分辨率降到最低，背景就糊了。流畅后再慢慢升回去。
+    if(dt>0&&!paced){acc+=dt;if(++frames===90){const avg=acc/frames;
+      if(avg>.045&&scale>floor){scale=Math.max(floor,scale*.85);fit()}
+      else if(avg<.038&&scale<top){scale=Math.min(top,scale*1.15);fit()}
+      frames=0;acc=0}}
     lens*=Math.pow(.35,dt);
     const zen=document.documentElement.classList.contains('zen');
     gain+=((zen?.95:.7)-gain)*Math.min(1,dt*2);
@@ -462,7 +470,7 @@ void main(){if(uDay>.5)dayMain();else nightMain();}
   function frame(now){
     // 滚动时不停住，只把背景降到每秒约 12 帧，给页面滚动让出显卡；平时约 30 帧。
     if(!calm&&!document.hidden&&last&&now-last<(now<hold?80:31)){raf=requestAnimationFrame(frame);return}
-    const dt=Math.min((now-(last||now))/1000,.05);last=now;if(!calm)clock+=dt;
+    const dt=Math.min((now-(last||now))/1000,.05);paced=now<hold;last=now;if(!calm)clock+=dt;
     render(dt);
     raf=0;if(!calm&&!document.hidden)raf=requestAnimationFrame(frame);
   }
