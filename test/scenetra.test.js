@@ -113,3 +113,15 @@ test('连接测试只查模型列表，不提交生成', async () => {
   const refused = await testProvider({ service: 'fydmai', protocol: 'scenetra', model: 'seedance-2-5', baseUrl: 'https://app.scenetra.com', apiKey: KEY, timeoutMs: 120000 }, { fetchImpl: async () => json(401, {}) });
   assert.equal(refused.level, 'fail');
 });
+
+test('免费校验连不上会重试一次；两次都失败就明确说没有提交', async () => {
+  let attempts = 0;
+  const flaky = new ScenetraVideoProvider({ model: 'seedance-2-5', baseUrl: 'https://app.scenetra.com', apiKey: KEY, fetchImpl: async url => {
+    if (String(url).includes('dryRun')) { if (++attempts === 1) throw new Error('tls'); return json(202, { dryRun: true, estimatedCredits: 5 }); }
+    return json(202, { runId: 'run_2', status: 'PENDING' });
+  } });
+  assert.equal((await flaky.submit({ prompt: 'x', duration: 5 })).id, 'run_2'); assert.equal(attempts, 2);
+  const down = new ScenetraVideoProvider({ model: 'seedance-2-5', baseUrl: 'https://app.scenetra.com', apiKey: KEY, fetchImpl: async () => { throw new Error('tls'); } });
+  const error = await down.submit({ prompt: 'x', duration: 5 }).catch(error => error);
+  assert.equal(error.submissionUnknown, undefined); assert.match(error.message, /没有提交，也没有扣积分/);
+});

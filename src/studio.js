@@ -378,7 +378,8 @@ export class Studio {
       }
     } catch (error) {
       job.state = error.submissionUnknown && !job.taskId ? 'unknown' : 'failed';
-      job.error = workflow.errorText(error); job.message = '';
+      // 结果不明时也把原因留下（例如网络中断），方便判断要不要去厂商后台核对。
+      job.error = workflow.errorText(error) + (error.submissionUnknown && error.message ? `原因：${String(error.message).slice(0, 200)}` : ''); job.message = '';
       await this.save();
     }
   }

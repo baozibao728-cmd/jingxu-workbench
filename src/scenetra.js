@@ -163,7 +163,16 @@ export class ScenetraVideoProvider {
   }
   async submit(input) {
     const { endpoint, json } = this.body(input), path = `/generate/${endpoint}`;
-    const price = await this.call(`${path}?dryRun=1`, { method: 'POST', json });
+    // 免费校验不会建任务：连不上就重试一次，还不行就明确说“没有提交”，不当成结果不明。
+    let price;
+    for (let attempt = 0; ; attempt++) {
+      try { price = await this.call(`${path}?dryRun=1`, { method: 'POST', json }); break; }
+      catch (error) {
+        if (!error.submissionUnknown) throw error;
+        if (attempt) throw new Error('提交前校验时连不上 Scenetra（网络中断），这次没有提交，也没有扣积分，可以直接重新生成');
+        await new Promise(done => setTimeout(done, 1500));
+      }
+    }
     const run = await this.call(path, { method: 'POST', json });
     if (!run?.runId) throw new Error('Scenetra 没有返回任务号');
     return { id: String(run.runId), status: STATES[run.status] || 'queued', progress: 0, urls: [], error: null, estimatedCredits: Number(run.estimatedCredits ?? price?.estimatedCredits) || 0 };
