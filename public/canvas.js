@@ -435,9 +435,12 @@ function onMove(event) {
   if (['move', 'marquee', 'link'].includes(drag.kind) && !edgeTimer) edgeTimer = requestAnimationFrame(edgePan);
 }
 // 拖着节点、连线或框选靠近窗口边缘时，画面自动朝那边移，越靠边越快。
-function edgePan() {
-  edgeTimer = 0; if (!drag || !drag.moved || !['move', 'marquee', 'link'].includes(drag.kind)) return;
-  const zone = 64, push = gap => gap < zone ? Math.pow((zone - Math.max(0, gap)) / zone, 1.6) * 20 : 0;
+// 速度按时间算（最快约每秒 450 像素），60Hz 和 120Hz 屏幕一样快。
+let edgeLast = 0;
+function edgePan(now = performance.now()) {
+  const dt = edgeLast ? Math.min(.05, (now - edgeLast) / 1000) : 1 / 60; edgeLast = now;
+  edgeTimer = 0; if (!drag || !drag.moved || !['move', 'marquee', 'link'].includes(drag.kind)) { edgeLast = 0; return; }
+  const zone = 72, push = gap => gap < zone ? Math.pow((zone - Math.max(0, gap)) / zone, 1.8) * 450 * dt : 0;
   const vx = push(last.x) - push(innerWidth - last.x), vy = push(last.y) - push(innerHeight - last.y);
   if (vx || vy) { cv.view.x += vx; cv.view.y += vy; drag.pan.x += vx; drag.pan.y += vy; applyView(); follow(); }
   edgeTimer = requestAnimationFrame(edgePan);
