@@ -3,11 +3,12 @@ import {readFile,writeFile,mkdir,rename} from 'node:fs/promises';
 import {dirname} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {ApiClient} from './http.js';
+import {SCENETRA_MODELS,SCENETRA_DEFAULT,scenetraPresetModels} from './scenetra.js';
 
 export const providerCatalog={
  deepseek:[{id:'deepseek',label:'DeepSeek',icon:'deepseek',protocol:'openai-chat',baseUrl:'https://api.deepseek.com',submitPath:'/chat/completions'},{id:'gemini',label:'Gemini',icon:'gemini',protocol:'openai-chat',baseUrl:'https://generativelanguage.googleapis.com',submitPath:'/v1beta/openai/chat/completions'},{id:'claude',label:'Claude',icon:'claude',protocol:'openai-chat',baseUrl:'https://api.anthropic.com',submitPath:'/v1/chat/completions'},{id:'gpt',label:'GPT',icon:'gpt',protocol:'openai-chat',baseUrl:'https://api.openai.com',submitPath:'/v1/chat/completions'},{id:'openai',label:'OpenAI 兼容（中转站）',protocol:'openai-chat',baseUrl:'',submitPath:'/v1/chat/completions'},{id:'custom',label:'自定义厂商',protocol:'json',baseUrl:''}],
  grsai:[{id:'grsai',label:'Grsai 中转站',protocol:'grsai',baseUrl:'https://grsaiapi.com'},{id:'openai',label:'OpenAI Images 兼容',protocol:'openai-images',baseUrl:'',submitPath:'/v1/images/generations'},{id:'custom',label:'自定义厂商',protocol:'json',baseUrl:''}],
- fydmai:[{id:'fydmai',label:'菲阳动漫',protocol:'fydmai',baseUrl:'https://fydmai.com'},{id:'yingman',label:'萤漫 OpenAI兼容视频',protocol:'openai-video',baseUrl:'https://yingman.xlapis.com',submitPath:'/v1/videos',model:'seedance-2.5-cc',models:[{id:'seedance-2.5-cc',label:'Seedance 2.5'},{id:'seedance-2.5-flash-cc',label:'Seedance 2.5 Flash'}],capabilities:{minDuration:4,maxDuration:30,defaultDuration:30,resolutions:['720p'],defaultResolution:'720p',maxReference:10}},{id:'custom',label:'自定义厂商 / 兼容视频接口',protocol:'json',baseUrl:''}],
+ fydmai:[{id:'fydmai',label:'菲阳动漫',protocol:'fydmai',baseUrl:'https://fydmai.com'},{id:'yingman',label:'萤漫 OpenAI兼容视频',protocol:'openai-video',baseUrl:'https://yingman.xlapis.com',submitPath:'/v1/videos',model:'seedance-2.5-cc',models:[{id:'seedance-2.5-cc',label:'Seedance 2.5'},{id:'seedance-2.5-flash-cc',label:'Seedance 2.5 Flash'}],capabilities:{minDuration:4,maxDuration:30,defaultDuration:30,resolutions:['720p'],defaultResolution:'720p',maxReference:10}},{id:'scenetra',label:'Scenetra',protocol:'scenetra',baseUrl:'https://app.scenetra.com',model:SCENETRA_DEFAULT,models:scenetraPresetModels()},{id:'custom',label:'自定义厂商 / 兼容视频接口',protocol:'json',baseUrl:''}],
 };
 export const providerIcons=['','deepseek','gemini','claude','gpt','letter'];
 export const protocolDefaults={deepseek:'openai-chat',grsai:'grsai',fydmai:'fydmai'};
@@ -23,7 +24,7 @@ export function safeProvider(config){
 }
 export function validateProvider(service,input){
  const protocol=input.protocol||protocolDefaults[service];
- const allowed={deepseek:['openai-chat','json'],grsai:['grsai','openai-images','json'],fydmai:['fydmai','openai-video','json']};
+ const allowed={deepseek:['openai-chat','json'],grsai:['grsai','openai-images','json'],fydmai:['fydmai','openai-video','scenetra','json']};
  if(!allowed[service]?.includes(protocol))throw Error('请选择该用途支持的接口协议');
  if(!input.baseUrl||!input.model)throw Error('请填写API基础地址和模型ID');
  if(input.icon!==undefined&&!providerIcons.includes(input.icon))throw Error('图标选项无效');
@@ -42,6 +43,7 @@ export function validateProvider(service,input){
    if(typeof a.referenceTag!=='string'||!a.referenceTag.trim())throw Error('请填写参考图引用标记');
   }
  }
+ if(protocol==='scenetra'&&!SCENETRA_MODELS[input.model])throw Error('请从列表里选择 Scenetra 的模型');
  if(service==='fydmai'&&protocol==='json'){
   const p=input.capabilities;
   if(!p||![p.minDuration,p.maxDuration,p.defaultDuration,p.maxReference].every(Number.isInteger)||p.minDuration<1||p.maxDuration<p.minDuration||p.defaultDuration<p.minDuration||p.defaultDuration>p.maxDuration||p.maxReference<1||!Array.isArray(p.resolutions)||!p.resolutions.length||!p.resolutions.every(x=>typeof x==='string'&&x)||!p.resolutions.includes(p.defaultResolution))throw Error('自定义视频需填写有效时长、默认时长、分辨率、默认分辨率、参考图数量');

@@ -316,3 +316,12 @@ npm start
 - `src/media-clips.js`、`src/video-merge.js` 都通过 `ffmpegTools.run(name, args, options)` 调用，第一次使用时如果还在安装会等它装完。安装失败的错误带 `install: true`，原样显示给用户。
 - `src/server.js` 启动 5 秒后在后台调用一次 `ensure()`，所以更新完重启就会自动装好。测试用 `createFfmpegTools({dir, fetchImpl, platform, arch, base, builds, check})` 注入假的下载源。
 - 以后升级 FFmpeg 版本：改 `FFMPEG_RELEASE` 和 `FFMPEG_BUILDS`，大小和摘要取 GitHub Release API 里每个资源的 `size` 和 `digest`。
+
+## Scenetra 视频渠道（2026-11-17 新增）
+
+- `src/scenetra.js`：`SCENETRA_MODELS` 按 Scenetra 的 OpenAPI（`https://app.scenetra.com/api/v1/openapi.json`，公开可读）写明每个模型的文生 / 参考生端点、参考图和音频字段名、引用写法（`@Image1`、`@image_1`、`Image 1`、`[Image 1]`……）、时长、清晰度、画幅和音频开关。模型 ID 用的是我们自己的家族名（如 `seedance-2-5`），提交时按有没有参考素材选 `-t2v` 或 `-ref2v`。
+- 协议名 `scenetra`：`createProvider` 返回 `ScenetraVideoProvider`；`referenceTag`、工作流的 `providerPrompt`（`@音频·名字` → 模型的音频写法）和自由创作（`@音频N` → 模型的音频写法）都按模型换写法；`profileCapabilities(config)` 让工作流按模型查表拿时长、清晰度和参考图上限。
+- 提交：先 `POST /api/v1/generate/{端点}?dryRun=1` 免费校验，再正式提交，返回 `runId`；查询 `GET /api/v1/runs/{runId}`，`outputs[].url` 是成片地址。工作流和自由创作的提交钩子会从 `runId` 记下任务号（dryRun 的返回不记）。
+- 参考素材：`hostTemporarily` 先传 uguu.se，失败重试一次后换 tmpfiles.org（转成 `/dl/` 直链）；同内容在有效期 60% 内复用。返回的 `expiresAt` 也写进工作流的 `upload-cache.json`，过期后重新上传。
+- 连接测试只 `GET /api/v1/models`，看所选模型的两个端点是否开放，不提交生成。测试在 `test/scenetra.test.js`，全部用假的 Scenetra 和假的图床。
+

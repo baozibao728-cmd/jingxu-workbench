@@ -1,6 +1,6 @@
 import {ApiClient} from './http.js';
 import {localImageReference,DeepSeekProvider,GrsaiImageProvider,FydmaiVideoProvider} from './providers.js';
-import {readFile,mkdir,writeFile,rename,rm} from 'node:fs/promises';import {basename,dirname} from 'node:path';import {randomUUID} from 'node:crypto';
+import {readFile,mkdir,writeFile,rename,rm} from 'node:fs/promises';import {basename,dirname} from 'node:path';import {ScenetraVideoProvider,scenetraImageTag} from './scenetra.js';import {randomUUID} from 'node:crypto';
 export function getPath(value,path){if(!path)return undefined;return String(path).split('.').reduce((v,key)=>v?.[key],value);}
 export function expandTemplate(value,variables){
  if(Array.isArray(value))return value.map(v=>expandTemplate(v,variables));
@@ -95,5 +95,5 @@ class OpenAIImageProvider{
   if(!urls.length)throw Error('图片响应没有data[].url或b64_json');return{id:`sync-${crypto.randomUUID()}`,status:'completed',urls};
  }
 }
-export function createProvider(service,config){if(config.protocol==='json')return new JsonProvider(config);if(service==='deepseek')return new DeepSeekProvider(config);if(service==='grsai')return config.protocol==='openai-images'?new OpenAIImageProvider(config):new GrsaiImageProvider(config);if(config.protocol==='openai-video')return new YingmanVideoProvider(config);return new FydmaiVideoProvider(config);}
-export function referenceTag(config,slot){if(config.protocol==='openai-video')return `@图片${slot.index} `;if(config.protocol!=='json')return `@${slot.filename} `;return config.adapter.referenceTag.replaceAll('{index}',String(slot.index)).replaceAll('{name}',slot.name).replaceAll('{filename}',slot.filename)+' ';}
+export function createProvider(service,config){if(config.protocol==='json')return new JsonProvider(config);if(service==='deepseek')return new DeepSeekProvider(config);if(service==='grsai')return config.protocol==='openai-images'?new OpenAIImageProvider(config):new GrsaiImageProvider(config);if(config.protocol==='openai-video')return new YingmanVideoProvider(config);if(config.protocol==='scenetra')return new ScenetraVideoProvider(config);return new FydmaiVideoProvider(config);}
+export function referenceTag(config,slot){if(config.protocol==='scenetra')return `${scenetraImageTag(config.model,slot.index)} `;if(config.protocol==='openai-video')return `@图片${slot.index} `;if(config.protocol!=='json')return `@${slot.filename} `;return config.adapter.referenceTag.replaceAll('{index}',String(slot.index)).replaceAll('{name}',slot.name).replaceAll('{filename}',slot.filename)+' ';}

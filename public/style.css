@@ -579,9 +579,9 @@ html[data-theme=dark] .cv{--cv-bg:#191919;--cv-dot:rgba(255,255,255,.055);--cv-n
 .cv-edges path{fill:none;stroke:var(--cv-edge);stroke-width:1.5;stroke-linecap:round;transition:stroke .25s}
 .cv-edges path.lit{stroke:var(--cv-edge-lit)}
 .cv-edges path.flow{stroke:var(--cv-glow);transition:none;animation:1.3s linear var(--cv-t,0s) infinite}
-.cv-edges path.flow.tail{stroke-width:1.5;stroke-dasharray:170 190;opacity:.3;animation-name:cv-flow-tail}
-.cv-edges path.flow.body{stroke-width:1.5;stroke-dasharray:96 264;opacity:.85;animation-name:cv-flow-body}
-.cv-edges path.flow.head{stroke:var(--cv-spark);stroke-width:1.5;stroke-dasharray:34 326;opacity:1;animation-name:cv-flow-head}
+.cv-edges path.flow.tail{stroke-width:2;stroke-dasharray:170 190;opacity:.34;animation-name:cv-flow-tail}
+.cv-edges path.flow.body{stroke-width:2.6;stroke-dasharray:96 264;opacity:.9;filter:drop-shadow(0 0 5px var(--cv-glow));animation-name:cv-flow-body}
+.cv-edges path.flow.head{stroke:var(--cv-spark);stroke-width:2.8;stroke-dasharray:34 326;opacity:.95;filter:drop-shadow(0 0 5px var(--cv-glow));animation-name:cv-flow-head}
 .cv-edges path.flow.fast{animation-duration:.8s}
 .cv-node{position:absolute;cursor:default}
 .cv-node.is-new{animation:studio-pop-in .32s var(--ease-out)}

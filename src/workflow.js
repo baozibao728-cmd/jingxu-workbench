@@ -12,6 +12,9 @@ import { resolvePrompts, renderStoryboardFormat } from './prompt-settings.js';
 import { splitScript } from './script-chunks.js';
 import { TaskPool, validateConcurrency } from './concurrency.js';
 import { createProvider, referenceTag } from './custom-providers.js';
+import { scenetraCapabilities, scenetraAudioTag } from './scenetra.js';
+// Scenetra 的时长、清晰度、参考图上限按所选模型查表，其他方案用方案里填的参数。
+const profileCapabilities = config => config.protocol === 'scenetra' ? scenetraCapabilities(config.model) : config.capabilities;
 import { dialogueLines } from './continuity.js';
 import { startStoryboardReparse, reparseSummary } from './storyboard-reparse.js';
 
@@ -38,9 +41,9 @@ const clean = (value, max = 20000) => String(value || '').trim().slice(0, max);
 const audioPrompt = (prompt, audios = []) => audios.length ? `${prompt}\n【声音参考绑定】${audios.map((audio, index) => `音频${index + 1}（${audio.voiceId || audio.model || '已选音频'}）是角色“${audio.role || '当前角色'}”的唯一声音参考；该角色的对白使用此音频的音色、年龄感、口音、语速和说话方式，其他角色不得复用。`).join(' ')}` : prompt;
 const providerPrompt = (prompt, audios = [], config = {}) => {
   const value = audioPrompt(prompt, audios);
-  if (config.protocol !== 'openai-video') return value;
+  if (config.protocol !== 'openai-video' && config.protocol !== 'scenetra') return value;
   let index = 0;
-  return value.replace(/@音频·[^\s@，。！？；：,!?;:()（）]+/g, () => `@音频${++index}`);
+  return value.replace(/@音频·[^\s@，。！？；：,!?;:()（）]+/g, () => config.protocol === 'scenetra' ? scenetraAudioTag(config.model, ++index) : `@音频${++index}`);
 };
 const parsePromptWithAudio = (text, assets) => {
   const markers = [];
@@ -73,7 +76,7 @@ export class Workflow {
     const model = project?.videoModel;
     return model && model !== config.model && array(config.models).some(item => item?.id === model) ? { ...config, model } : config;
   }
-  videoProfile(project) { const config=this.videoConfigForProject(project); const current=this.config().fydmai; const capabilities=(config.protocol==='json'||config.protocol==='openai-video')?{models:[{kind:'video',model:config.model,...config.capabilities}]}:(config.id===current.id ? this.getCapabilities() : null); return videoProfile(config.model, capabilities); }
+  videoProfile(project) { const config=this.videoConfigForProject(project); const current=this.config().fydmai; const capabilities=['json','openai-video','scenetra'].includes(config.protocol)?{models:[{kind:'video',model:config.model,...profileCapabilities(config)}]}:(config.id===current.id ? this.getCapabilities() : null); return videoProfile(config.model, capabilities); }
   videoChannels() {
     // 每个已配置的视频方案按它的模型列表展开：一个方案填了几个模型，这里就有几项可选。
     const configured = (this.getProviderProfiles()?.profiles || []).filter(profile => profile.service === 'fydmai' && profile.configured && !profile.archived).flatMap(profile => {
@@ -103,11 +106,11 @@ export class Workflow {
     const config = this.getProviderById(snapshot.providerId);
     return snapshot.model && snapshot.model !== config.model ? { ...config, model: snapshot.model } : config;
   }
-  videoTag(slot,config=this.config().fydmai) { return (config.protocol==='json'||config.protocol==='openai-video')?referenceTag(config,slot):fydmaiFilenameTag(slot); }
+  videoTag(slot,config=this.config().fydmai) { return ['json','openai-video','scenetra'].includes(config.protocol)?referenceTag(config,slot):fydmaiFilenameTag(slot); }
   resolution(project) { return project.resolution || this.videoProfile(project).defaultResolution; }
   async checkVideoAvailability(project) {
     const config = this.videoConfigForProject(project), current = this.config().fydmai;
-    const capabilities = (config.protocol==='json'||config.protocol==='openai-video') ? {models:[{kind:'video',model:config.model,...config.capabilities}]} : (config.id===current.id && this.refreshCapabilities ? await this.refreshCapabilities() : config.id===current.id ? this.getCapabilities() : null);
+    const capabilities = ['json','openai-video','scenetra'].includes(config.protocol) ? {models:[{kind:'video',model:config.model,...profileCapabilities(config)}]} : (config.id===current.id && this.refreshCapabilities ? await this.refreshCapabilities() : config.id===current.id ? this.getCapabilities() : null);
     const profile = videoProfile(config.model, capabilities);
     if (profile.onShelf === false) fail(`${profile.model} 当前被视频服务标记为未上架，请等待服务恢复后再生成`);
   }
@@ -724,11 +727,12 @@ export class Workflow {
       })();
       await this.cacheLoad;
     }
-    if (this.uploadCache[key]) return this.uploadCache[key];
+    // 临时图床的地址会过期（Scenetra），过期前重新上传。
+    if (this.uploadCache[key] && !(this.uploadCache[key].expiresAt && Date.parse(this.uploadCache[key].expiresAt) <= Date.now())) return this.uploadCache[key];
     if (this.uploads.has(key)) return this.uploads.get(key);
     const promise = (async () => {
       const result = await provider.uploadImage(this.store.media(project.id, asset.file));
-      const record = { assetId: result.assetId, filename: asset.filename, sha256: asset.version };
+      const record = { assetId: result.assetId, filename: asset.filename, sha256: asset.version, ...(result.expiresAt ? { expiresAt: result.expiresAt } : {}) };
       this.uploadCache[key] = record;
       // 将各次缓存写入串行化，避免多次上传互相覆盖。
       this.cacheWrite = (this.cacheWrite || Promise.resolve()).catch(() => {}).then(() => writeFile(cachePath, JSON.stringify(this.uploadCache, null, 2), { mode: 0o600 }));
@@ -745,13 +749,14 @@ export class Workflow {
       this.cacheLoad ||= (async () => { try { this.uploadCache = JSON.parse(await readFile(cachePath, 'utf8')); } catch (error) { if (error.code !== 'ENOENT') throw error; this.uploadCache = {}; } })();
       await this.cacheLoad;
     }
-    if (this.uploadCache[key]) return this.uploadCache[key];
+    // 临时图床的地址会过期（Scenetra），过期前重新上传。
+    if (this.uploadCache[key] && !(this.uploadCache[key].expiresAt && Date.parse(this.uploadCache[key].expiresAt) <= Date.now())) return this.uploadCache[key];
     if (this.uploads.has(key)) return this.uploads.get(key);
     const promise = (async () => {
       const current = this.getVoiceAudio?.().find(item => item.id === audio.id);
       if (!current?.file) throw new Error('引用音频文件不存在');
       const result = await provider.uploadAudio(current.path || current.file);
-      const record = { assetId: result.assetId, filename: current.file, sha256: audio.version };
+      const record = { assetId: result.assetId, filename: current.file, sha256: audio.version, ...(result.expiresAt ? { expiresAt: result.expiresAt } : {}) };
       this.uploadCache[key] = record;
       this.cacheWrite = (this.cacheWrite || Promise.resolve()).catch(() => {}).then(() => writeFile(cachePath, JSON.stringify(this.uploadCache, null, 2), { mode: 0o600 }));
       await this.cacheWrite; return record;
@@ -764,9 +769,11 @@ export class Workflow {
     const taskConfig=this.videoConfig(snapshot);
     const provider = this.factories.video({ ...taskConfig, model: snapshot.model, fetchImpl: async (url, options) => {
       const response = await fetch(url, options);
-      if (options.method === 'POST' && new URL(url).pathname === '/v1/videos') {
-        const raw = await response.clone().json();
-        if (raw.id) { shot.job.taskId = raw.id; await this.store.save(project); }
+      const target = new URL(url);
+      if (options.method === 'POST' && (target.pathname === '/v1/videos' || (target.pathname.startsWith('/api/v1/generate/') && !target.searchParams.has('dryRun')))) {
+        const raw = await response.clone().json().catch(() => ({}));
+        const id = raw.id || raw.runId;
+        if (id && response.ok) { shot.job.taskId = String(id); await this.store.save(project); }
       }
       return response;
     } });

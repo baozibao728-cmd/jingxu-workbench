@@ -5,6 +5,7 @@ import { now, jobActive } from './project-store.js';
 import { localImageReference } from './providers.js';
 import { validateVideoSettings } from './video-profile.js';
 import { normalizeUpload, splitMedia, trimAudio } from './media-clips.js';
+import { scenetraAudioTag } from './scenetra.js';
 
 // 自由创作：不经过剧本和分镜，直接用一段提示词加参考图生成视频或图片。
 // 数据单独放在 _studio 目录，不属于任何项目，也不进项目导出包。
@@ -142,7 +143,7 @@ export class Studio {
       const profile = this.workflow.videoProfile({ videoProviderId: channel.id, videoModel: channel.model });
       return { value: channel.value, label: channel.label, model: channel.model, unavailable: profile.unavailable === true, error: profile.error || '',
         minDuration: profile.minDuration, maxDuration: profile.maxDuration, defaultDuration: profile.defaultDuration,
-        resolutions: profile.resolutions, defaultResolution: profile.defaultResolution, maxReference: Math.min(12, Number(profile.maxReference) || 9) };
+        resolutions: profile.resolutions, defaultResolution: profile.defaultResolution, maxReference: Math.min(30, Number(profile.maxReference) || 9) };
     });
   }
 
@@ -201,7 +202,7 @@ export class Studio {
       const profile = this.workflow.videoProfile({ videoProviderId: channel.id, videoModel: channel.model });
       const duration = Number(input.duration), resolution = String(input.resolution || profile.defaultResolution);
       validateVideoSettings(profile, duration, resolution);
-      if (refs.length > Math.min(12, Number(profile.maxReference) || 9)) fail(`${channel.model} 最多带 ${Math.min(12, Number(profile.maxReference) || 9)} 张参考图`);
+      if (refs.length > Math.min(30, Number(profile.maxReference) || 9)) fail(`${channel.model} 最多带 ${Math.min(30, Number(profile.maxReference) || 9)} 张参考图`);
       Object.assign(item, { channel: channel.value, providerId: channel.id, model: channel.model, label: channel.label, duration, resolution });
     } else {
       const channel = this.imageChannel();
@@ -320,7 +321,7 @@ export class Studio {
       // 提交请求一返回任务号就先记下来，之后即使断线也能接着查，不会重复提交。
       const provider = workflow.factories[item.kind]({ ...config, model: item.model, fetchImpl: async (url, options = {}) => {
         const response = await (config.fetchImpl || fetch)(url, options);
-        if (submitting && options.method === 'POST') { try { const raw = await response.clone().json(); if (raw?.id && !job.taskId) { job.taskId = String(raw.id); await this.save(); } } catch {} }
+        if (submitting && options.method === 'POST' && response.ok && !String(url).includes('dryRun=')) { try { const raw = await response.clone().json(); const id = raw?.id || raw?.runId; if (id && !job.taskId) { job.taskId = String(id); await this.save(); } } catch {} }
         return response;
       } });
       const paths = item.refs.map(ref => join(this.root, ref.file));
@@ -343,7 +344,9 @@ export class Studio {
           job.message = '上传参考音频'; await this.save();
           for (const audio of item.audios) voices.push(await provider.uploadAudio(join(this.root, audio.file)));
         }
-        const prompt = compileMentions(item.prompt, slots.length, index => workflow.videoTag(slots[index - 1], config), voices.length);
+        let prompt = compileMentions(item.prompt, slots.length, index => workflow.videoTag(slots[index - 1], config), voices.length);
+        // Scenetra 各模型引用音频的写法不同（@Audio1、Audio 1……），在这里换成对应写法。
+        if (config.protocol === 'scenetra') prompt = prompt.replace(/@音频(\d+)/g, (_, digits) => scenetraAudioTag(item.model, Number(digits)));
         Object.assign(job, { state: 'submitting', message: '提交视频', submittedAt: now() }); await this.save();
         submitting = true;
         task = await provider.submit({ model: item.model, prompt, duration: item.duration, aspectRatio: item.aspectRatio,

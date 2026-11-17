@@ -1,5 +1,6 @@
 import {ApiClient} from './http.js';
 import {expandTemplate} from './custom-providers.js';
+import {SCENETRA_MODELS} from './scenetra.js';
 
 // 连接测试。文本用一次极短的对话验证；生图和视频只发 GET 查询，不提交任何生成任务，不会产生生成费用。
 // 不回显 Key、请求头或上游原始响应。
@@ -55,6 +56,18 @@ async function testMedia(profile,service,fetchImpl){
  if(profile.protocol==='grsai')queries.push(`/v1/api/result?id=${PROBE_ID}`);
  else if(profile.protocol==='json'){if(profile.adapter?.queryPath)queries.push(profile.adapter.queryPath.replaceAll('{id}',PROBE_ID));}
  else if(profile.protocol!=='openai-images')queries.push(`/v1/videos/${PROBE_ID}`);
+ if(profile.protocol==='scenetra'){
+  // Scenetra：GET /api/v1/models 免费，能验证 Key，也能看所选模型是否开放 API。
+  const list=await call(profile,'/api/v1/models',{fetchImpl});
+  const refused=rejected(list);if(refused)return refused;
+  if(list.status!==200)return fail(`Scenetra 返回 HTTP ${list.status}，请核对地址是否为 https://app.scenetra.com`);
+  const model=SCENETRA_MODELS[profile.model];if(!model)return fail('请从列表里选择 Scenetra 的模型。');
+  const ids=modelIds(list.payload);
+  const missing=[model.t2v,model.ref].filter(id=>ids.length&&!ids.includes(id));
+  if(missing.length===2)return {level:'reachable',message:`Key 有效，但 Scenetra 现在没有开放 ${model.label} 的 API，请换一个模型。${note}`};
+  if(missing.length)return {level:'reachable',message:`Key 有效。${model.label} 的${missing[0]===model.ref?'参考图生视频':'纯文字生视频'}暂时没开放，${missing[0]===model.ref?'带参考图':'不带参考图'}时会失败。${note}`};
+  return {level:'ok',message:`Key 有效，${model.label} 的文字生视频和参考图生视频都已开放。${note}积分余额要到真正生成时才能确认。`};
+ }
  const models=await call(profile,'/v1/models',{fetchImpl});
  const bad=rejected(models);if(bad)return bad;
  if(models.status===200){
