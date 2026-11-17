@@ -568,8 +568,8 @@ html.zip-dragging .zip-drop-cover{display:flex}
 .studio-canvas-card:hover .studio-canvas-delete,.studio-canvas-delete:focus-visible{opacity:1}
 /* 画布 */
 html.cv-open{overflow:hidden}
-.cv{--cv-bg:#f3f3f3;--cv-dot:rgba(0,0,0,.075);--cv-node:#fff;--cv-line:rgba(0,0,0,.07);--cv-edge:#b9b9b9;--cv-edge-lit:#6f7378;--cv-select:#2a2a2a;--cv-spark:color-mix(in srgb,#3d9bff 35%,#fff);--cv-glow:#3d9bff;--cv-shadow:0 1px 3px rgba(0,0,0,.04),0 8px 24px -12px rgba(0,0,0,.12);--glass-strong:#fff;--line:rgba(0,0,0,.08)}
-html[data-theme=dark] .cv{--cv-bg:#191919;--cv-dot:rgba(255,255,255,.055);--cv-node:#262626;--cv-line:rgba(255,255,255,.07);--cv-edge:#555;--cv-edge-lit:#c9ccd1;--cv-select:#f2f2f2;--cv-spark:color-mix(in srgb,#4aa8ff 35%,#fff);--cv-glow:#4aa8ff;--cv-shadow:0 8px 28px -14px rgba(0,0,0,.6);--glass-strong:#242424;--line:rgba(255,255,255,.09)}
+.cv{--cv-bg:#f3f3f3;--cv-dot:rgba(0,0,0,.075);--cv-node:#fff;--cv-line:rgba(0,0,0,.07);--cv-edge:#b9b9b9;--cv-edge-lit:#6f7378;--cv-select:#2a2a2a;--cv-spark:color-mix(in srgb,#3d9bff 78%,#fff);--cv-glow:#3d9bff;--cv-shadow:0 1px 3px rgba(0,0,0,.04),0 8px 24px -12px rgba(0,0,0,.12);--glass-strong:#fff;--line:rgba(0,0,0,.08)}
+html[data-theme=dark] .cv{--cv-bg:#191919;--cv-dot:rgba(255,255,255,.055);--cv-node:#262626;--cv-line:rgba(255,255,255,.07);--cv-edge:#555;--cv-edge-lit:#c9ccd1;--cv-select:#f2f2f2;--cv-spark:color-mix(in srgb,#4aa8ff 78%,#fff);--cv-glow:#4aa8ff;--cv-shadow:0 8px 28px -14px rgba(0,0,0,.6);--glass-strong:#242424;--line:rgba(255,255,255,.09)}
 .cv{position:fixed;inset:0;z-index:60;overflow:hidden;background-color:var(--cv-bg);background-image:radial-gradient(circle,var(--cv-dot) 1px,transparent 1.3px);background-size:24px 24px;outline:none;touch-action:none;user-select:none;-webkit-user-select:none;cursor:default}
 .cv.grab{cursor:grab}.cv.grab .cv-node,.cv.grab .cv-handle{cursor:grab}.cv.grabbing,.cv.grabbing *{cursor:grabbing!important}
 .cv.grab .cv-nodes,.cv.grabbing .cv-nodes{pointer-events:none}
@@ -581,7 +581,7 @@ html[data-theme=dark] .cv{--cv-bg:#191919;--cv-dot:rgba(255,255,255,.055);--cv-n
 .cv-edges path.flow{stroke:var(--cv-glow);transition:none;animation:1.3s linear var(--cv-t,0s) infinite}
 .cv-edges path.flow.tail{stroke-width:2;stroke-dasharray:170 190;opacity:.34;animation-name:cv-flow-tail}
 .cv-edges path.flow.body{stroke-width:2.6;stroke-dasharray:96 264;opacity:.9;filter:drop-shadow(0 0 5px var(--cv-glow));animation-name:cv-flow-body}
-.cv-edges path.flow.head{stroke:var(--cv-spark);stroke-width:3.2;stroke-dasharray:20 340;filter:drop-shadow(0 0 4px var(--cv-spark)) drop-shadow(0 0 10px var(--cv-glow));animation-name:cv-flow-head}
+.cv-edges path.flow.head{stroke:var(--cv-spark);stroke-width:2.8;stroke-dasharray:34 326;opacity:.95;filter:drop-shadow(0 0 5px var(--cv-glow));animation-name:cv-flow-head}
 .cv-edges path.flow.fast{animation-duration:.8s}
 .cv-node{position:absolute;cursor:default}
 .cv-node.is-new{animation:studio-pop-in .32s var(--ease-out)}
@@ -599,8 +599,9 @@ html[data-theme=dark] .cv{--cv-bg:#191919;--cv-dot:rgba(255,255,255,.055);--cv-n
 .cv-node:hover
 .cv-handle,.cv-node.selected
 .cv-handle{opacity:1;--s:1}
-.cv-handle:hover:not(:disabled){--s:1.16}
-.cv-handle:hover:not(:disabled) i{background:var(--cv-select);border-color:var(--cv-select);color:var(--cv-bg)}
+.cv-handle:hover:not(:disabled){--s:1.16;background:transparent;border:0;box-shadow:none}
+.cv-node .cv-handle:hover:not(:disabled){transform:none}
+.cv-handle:hover:not(:disabled) i{color:var(--ink)}
 .cv-marquee{position:absolute;border:1px dashed var(--cv-edge-lit);background:color-mix(in srgb,var(--cv-edge) 22%,transparent);opacity:.8;border-radius:4px;pointer-events:none}
 .cv-top{position:absolute;left:16px;top:14px;display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:14px;background:var(--glass-strong);border:1px solid var(--line);box-shadow:var(--shadow);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur)}
 .cv-back{border:0;background:transparent;padding:8px;border-radius:9px}.cv-back svg{transform:rotate(180deg)}
@@ -627,7 +628,7 @@ html[data-theme=dark] .cv{--cv-bg:#191919;--cv-dot:rgba(255,255,255,.055);--cv-n
 .cv-dock span{font-size:11px;color:var(--muted);padding-right:10px;white-space:nowrap}
 @keyframes cv-flow-tail{from{stroke-dashoffset:0}to{stroke-dashoffset:-360}}
 @keyframes cv-flow-body{from{stroke-dashoffset:-74}to{stroke-dashoffset:-434}}
-@keyframes cv-flow-head{from{stroke-dashoffset:-150}to{stroke-dashoffset:-510}}
+@keyframes cv-flow-head{from{stroke-dashoffset:-136}to{stroke-dashoffset:-496}}
 @media(max-width:900px){.cv-dock span,.cv-dock i{display:none}}
 @keyframes studio-pop-in{from{opacity:0;transform:scale(.7)}to{opacity:1;transform:none}}
 @keyframes studio-rise{from{opacity:0;transform:translateY(18px) scale(.98)}to{opacity:1;transform:none}}
@@ -651,3 +652,16 @@ html[data-theme=dark] .cv{--cv-bg:#191919;--cv-dot:rgba(255,255,255,.055);--cv-n
 .cv-seltools button{border:0;background:transparent;padding:7px 10px;border-radius:8px;font-size:12px}
 .cv-handle.multi{opacity:1;--s:1;right:-64px;top:calc(50% - 34px);pointer-events:auto;transform-origin:center}
 .cv.grab .cv-group,.cv.grab .cv-selbox *{pointer-events:none}
+
+/* 接口设置：选择并删除方案 */
+.provider-top-actions{display:flex;align-items:center;gap:8px;flex:none}
+.provider-pick-toggle.active,.provider-pick-toggle.active:hover:not(:disabled){background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent-ink)}
+.provider-pick-mark{flex:none;width:0;height:18px;border-radius:50%;border:0 solid var(--line-2);opacity:0;margin-right:-12px;transition:width .22s var(--ease-out),opacity .18s,margin .22s var(--ease-out),background .16s,border-color .16s;display:grid;place-items:center}
+.provider-dashboard.selecting .provider-pick-mark{width:18px;border-width:1.5px;opacity:1;margin-right:0}
+.provider-dashboard.selecting .provider-card{cursor:pointer}
+.provider-dashboard.selecting .provider-card.active{cursor:not-allowed}
+.provider-dashboard.selecting .provider-card.active .provider-pick-mark{opacity:.35}
+.provider-dashboard.selecting .provider-card-actions{display:none}
+.provider-card.picked{border-color:var(--accent-line);background:var(--accent-soft)}
+.provider-card.picked .provider-pick-mark{background:var(--accent);border-color:var(--accent)}
+.provider-card.picked .provider-pick-mark::after{content:"";width:8px;height:4px;border-left:2px solid #fff;border-bottom:2px solid #fff;transform:translateY(-1px) rotate(-45deg)}

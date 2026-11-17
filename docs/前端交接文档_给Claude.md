@@ -93,6 +93,8 @@
 
 当前默认厂商方案 UI 模仿 CC Switch 的“厂商卡片 + 详情编辑”逻辑。
 
+厂商列表右上角有“选择”：开启后点卡片选中，再点“删除所选”。删除走 `POST /api/provider-profiles/remove`（`ProviderSettings.remove`），只是把方案标成 `archived` 从列表和模型选择里收起，记录和 Key 仍留在本机配置文件里，已提交的任务才能继续查询；使用中的方案不能删。
+
 已接入的协议：
 
 - OpenAI Chat Completions

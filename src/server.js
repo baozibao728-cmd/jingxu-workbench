@@ -182,6 +182,7 @@ export async function createApplication({ root = join(applicationRoot, 'data', '
           return send(response, 201, workflow.view(await store.create({ ...input, videoProviderId: input.videoProviderId || config.fydmai.id, clipDuration: input.clipDuration ?? profile.defaultDuration, resolution: input.resolution ?? profile.defaultResolution })));
         }
         if (url.pathname === '/api/provider-profiles' && request.method === 'GET') return send(response,200,providers.view());
+        if (url.pathname === '/api/provider-profiles/remove' && request.method === 'POST') { await providers.remove((await body(request)).ids); capabilities = null; return send(response, 200, providers.view()); }
         const providerTest = url.pathname.match(/^\/api\/provider-profiles\/([^/]+)\/test$/);
         if (providerTest && request.method === 'POST') return send(response, 200, await testProvider(providers.byId(decodeURIComponent(providerTest[1]))));
         if (url.pathname === '/api/settings' && request.method === 'POST') {

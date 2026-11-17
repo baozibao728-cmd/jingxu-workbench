@@ -22,3 +22,11 @@ test('厂商图标可保存并回传给界面；只改图标不新建连接编�
  assert.deepEqual(s.view().catalog.deepseek.filter(x=>x.icon).map(x=>x.id),['deepseek','gemini','claude','gpt']);
  }finally{await rm(root,{recursive:true,force:true});}
 });
+
+test('删除方案：使用中的不能删，删掉的从列表收起但旧任务仍能读到',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'jingxu-remove-'));try{const path=join(root,'providers.json'),s=new ProviderSettings(path,initial());await s.init();const first=s.config().grsai.id;
+  await s.save({grsai:{profileId:'new',name:'另一家',protocol:'openai-images',model:'image2',baseUrl:'https://new.example',apiKey:'k2'}});const second=s.config().grsai.id;
+  await assert.rejects(s.remove([second]),/使用中/);await assert.rejects(s.remove([]));await assert.rejects(s.remove(['nope']));
+  await s.remove([first]);assert.equal(s.view().profiles.find(p=>p.id===first).archived,true);assert.equal(s.byId(first).model,'legacy');assert.equal(s.config().grsai.id,second);
+  await assert.rejects(s.remove([first]));const reload=new ProviderSettings(path,initial());await reload.init();assert.equal(reload.byId(first).archived,true);assert.ok(!JSON.stringify(reload.view()).includes('secret-'));
+ }finally{await rm(root,{recursive:true,force:true});}});

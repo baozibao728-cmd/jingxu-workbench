@@ -56,6 +56,17 @@ export class ProviderSettings{
  config(){return Object.fromEntries(Object.keys(protocolDefaults).map(s=>[s,this.active(s)]));}
  byId(id){const p=this.profiles[id];if(!p)throw Error('原任务的厂商配置已不存在');return p;}
  view(){return {selected:this.selected,profiles:Object.values(this.profiles).map(safeProvider),catalog:providerCatalog,customExample};}
+ // 删除只是从列表里收起来：已经提交、可能还在计费的任务要靠原配置继续查询，所以记录本身留着。
+ async remove(ids){
+  const operation=this.writes.catch(()=>{}).then(async()=>{
+   if(!Array.isArray(ids)||!ids.length)throw Error('请先选择要删除的方案');
+   const profiles=structuredClone(this.profiles);
+   for(const id of ids){const profile=profiles[id];if(!profile||profile.archived)throw Error('方案不存在或已删除');if(Object.values(this.selected).includes(id))throw Error('使用中的方案不能删除，请先启用别的方案');profile.archived=true;profile.removed=true;}
+   await mkdir(dirname(this.path),{recursive:true});const temp=`${this.path}.${randomUUID()}.tmp`;
+   await writeFile(temp,JSON.stringify({profiles,selected:this.selected},null,2),{mode:0o600});await rename(temp,this.path);
+   this.profiles=profiles;
+  });this.writes=operation;return operation;
+ }
  async save(input){
   const operation=this.writes.catch(()=>{}).then(async()=>{
    const profiles=structuredClone(this.profiles),selected={...this.selected};
