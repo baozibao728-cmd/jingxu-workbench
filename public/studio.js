@@ -148,8 +148,8 @@ ${composerBox().replace(/<\/div>$/, `<div class="studio-drop-cover" aria-hidden=
 }
 const canvasHTML = () => ctx.canvas.listHTML();
 export function studioPage() {
-  if (!data) return `<section class="studio-page"><h1 class="studio-title">心中所想，<em>即刻</em>呈现</h1></section>`;
-  return `<section class="studio-page"><h1 class="studio-title">心中所想，<em>即刻</em>呈现</h1><div class="studio-mode" role="tablist" data-mode="${mode}"><i class="studio-mode-pill"></i><button role="tab" class="${mode === 'create' ? 'active' : ''}" data-action="studio-mode" data-mode="create">创作</button><button role="tab" class="${mode === 'canvas' ? 'active' : ''}" data-action="studio-mode" data-mode="canvas">画布</button></div><div class="studio-stage">${mode === 'canvas' ? canvasHTML() : createHTML()}</div></section>`;
+  if (!data) return `<section class="studio-page"><h1 class="studio-title">Create <em class="shine">anything</em> you imagine</h1></section>`;
+  return `<section class="studio-page"><h1 class="studio-title">Create <em class="shine">anything</em> you imagine</h1><div class="studio-mode" role="tablist" data-mode="${mode}"><i class="studio-mode-pill"></i><button role="tab" class="${mode === 'create' ? 'active' : ''}" data-action="studio-mode" data-mode="create">创作</button><button role="tab" class="${mode === 'canvas' ? 'active' : ''}" data-action="studio-mode" data-mode="canvas">画布</button></div><div class="studio-stage">${mode === 'canvas' ? canvasHTML() : createHTML()}</div></section>`;
 }
 // 局部重画：参考图条、底部一排按钮、生成按钮。输入框本身不动。
 export function paint({ refs = true, bar = true, editor = false } = {}) {
@@ -369,6 +369,8 @@ export async function studioAction(action, button) {
     const next = button.dataset.mode === 'canvas' ? 'canvas' : 'create'; if (next === mode) return;
     mode = next; closePop(); hideMenu();
     if (mode === 'canvas') await ctx.canvas.loadList();
+    // 切换“创作 / 画布”时，标题里的 anything 再走一遍流光。
+    const word = $('.studio-title em'); if (word) { word.classList.remove('shine'); void word.offsetWidth; word.classList.add('shine'); }
     const toggle = $('.studio-mode'); toggle.dataset.mode = mode; toggle.querySelectorAll('button').forEach(item => item.classList.toggle('active', item.dataset.mode === mode));
     const stage = $('.studio-stage'); stage.innerHTML = mode === 'canvas' ? canvasHTML() : createHTML(); lastJSON = JSON.stringify(data.items); fade(stage, 10);
     return;
