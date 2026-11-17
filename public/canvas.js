@@ -60,16 +60,23 @@ function bodyHTML(item) {
 const bodyKey = item => { const job = itemOf(item); return JSON.stringify([item.url, job?.result?.url || '', job?.job.state || '', job?.job.error || '']); };
 function nodeHTML(item, fresh = false) {
   const { escape, icon } = ctx;
-  return `<div class="cv-node type-${item.type} ${sel.has(item.id) ? 'selected' : ''} ${fresh ? 'is-new' : ''}" data-node="${item.id}" style="left:${item.x}px;top:${item.y}px;width:${item.w}px"><div class="cv-node-label">${icon(item.type === 'video' ? 'play' : 'image', 12)}<span>${escape(item.label)}</span></div><div class="cv-node-body" data-key="${escape(bodyKey(item))}" style="aspect-ratio:${item.ratio || 16 / 9}">${bodyHTML(item)}</div>${item.type === 'image' ? `<button class="cv-handle" data-handle title="拉出连线，用这张图去生成" aria-label="拉出连线">${icon('plus', 13)}</button>` : ''}</div>`;
+  return `<div class="cv-node type-${item.type} ${sel.has(item.id) ? 'selected' : ''} ${fresh ? 'is-new' : ''}" data-node="${item.id}" style="left:${item.x}px;top:${item.y}px;width:${item.w}px"><div class="cv-node-label">${icon(item.type === 'video' ? 'play' : 'image', 12)}<span>${escape(item.label)}</span></div><div class="cv-node-body" data-key="${escape(bodyKey(item))}" style="aspect-ratio:${item.ratio || 16 / 9}">${bodyHTML(item)}</div>${item.type === 'image' ? `<button class="cv-handle" data-handle title="拉出连线，用这张图去生成" aria-label="拉出连线"><i>${icon('plus', 13)}</i></button>` : ''}</div>`;
 }
 function drawNodes() { $('.cv-nodes').innerHTML = cv.nodes.map(item => nodeHTML(item)).join(''); drawEdges(); drawGroups(); toggleEmpty(); }
 function toggleEmpty() { $('.cv-empty').hidden = cv.nodes.length > 0; }
 const anchorOut = item => ({ x: item.x + item.w, y: item.y + LABEL + height(item) / 2 });
 const anchorIn = item => ({ x: item.x, y: item.y + LABEL + height(item) / 2 });
 const curve = (a, b) => { const bend = Math.max(60, Math.abs(b.x - a.x) / 2); return `M${a.x},${a.y} C${a.x + bend},${a.y} ${b.x - bend},${b.y} ${b.x},${b.y}`; };
-const tempEdges = (from, to) => from.map(id => { const d = curve(anchorOut(node(id)), to); return `<path class="lit" d="${d}"/><path class="glow" d="${d}"/>`; }).join('');
-function drawEdges(extra = '') {
-  $('.cv-edges').innerHTML = cv.edges.map(edge => { const from = node(edge.from), to = node(edge.to); if (!from || !to) return ''; const busy = activeJob(itemOf(to)?.job), lit = sel.has(from.id) || sel.has(to.id); const d = curve(anchorOut(from), anchorIn(to)); return `<path class="${lit ? 'lit' : ''}" d="${d}"/>${busy || lit ? `<path class="glow ${busy ? 'fast' : ''}" d="${d}"/>` : ''}`; }).join('') + extra;
+// 流光分三层：长尾、光身、最前面的亮头，三层同速，看起来像一股往前跑的电流。
+const flow = (d, fast = false) => ['tail', 'body', 'head'].map(part => `<path class="flow ${part}${fast ? ' fast' : ''}" d="${d}"/>`).join('');
+const tempEdges = (from, to) => from.filter(node).map(id => { const d = curve(anchorOut(node(id)), to); return `<path class="lit" d="${d}"/>${flow(d)}`; }).join('');
+function drawEdges() {
+  // 正在拉的线、松手后等着选类型的线，都从状态里重画，别的地方刷新时不会把它冲掉。
+  const pending = drag?.kind === 'link' && drag.to ? tempEdges(drag.from, drag.to) : menuState?.from ? tempEdges(menuState.from, menuState.world) : '';
+  const svg = $('.cv-edges');
+  // 每次重画都按同一个时钟对齐动画进度，流光不会因为重画而跳回起点。
+  svg.style.setProperty('--cv-t', `${-(performance.now() % 10400)}ms`);
+  svg.innerHTML = cv.edges.map(edge => { const from = node(edge.from), to = node(edge.to); if (!from || !to) return ''; const busy = activeJob(itemOf(to)?.job), lit = sel.has(from.id) || sel.has(to.id); const d = curve(anchorOut(from), anchorIn(to)); return `<path class="${lit ? 'lit' : ''}" d="${d}"/>${busy || lit ? flow(d, busy) : ''}`; }).join('') + pending;
 }
 // ---- 分组和多选框 ----
 function boundsOf(ids) {
@@ -85,7 +92,7 @@ function drawSelBox() {
   if (!area) { box.hidden = true; return; }
   const { icon } = ctx, images = [...sel].some(id => node(id)?.type === 'image'), grouped = groupOfSelection(), inverse = 1 / cv.view.k;
   box.hidden = false; box.style.cssText = `left:${area.l - 18}px;top:${area.t - 14}px;width:${area.r - area.l + 36}px;height:${area.b - area.t + 32}px`;
-  box.innerHTML = `<div class="cv-seltools" style="transform:scale(${inverse})"><span>已选 ${sel.size} 个</span><button data-action="${grouped ? 'canvas-ungroup' : 'canvas-group'}">${icon('copy', 13)}${grouped ? '解组' : '打组'}</button><button data-action="canvas-delete-selected">${icon('trash', 13)}删除</button></div>${images ? `<button class="cv-handle multi" data-handle-multi style="transform:scale(${inverse})" title="把选中的图片一起连出去" aria-label="一起拉出连线">${icon('plus', 13)}</button>` : ''}`;
+  box.innerHTML = `<div class="cv-seltools" style="transform:scale(${inverse})"><span>已选 ${sel.size} 个</span><button data-action="${grouped ? 'canvas-ungroup' : 'canvas-group'}">${icon('copy', 13)}${grouped ? '解组' : '打组'}</button><button data-action="canvas-delete-selected">${icon('trash', 13)}删除</button></div>${images ? `<button class="cv-handle multi" data-handle-multi style="transform:scale(${inverse})" title="把选中的图片一起连出去" aria-label="一起拉出连线"><i>${icon('plus', 13)}</i></button>` : ''}`;
 }
 function paintSelection() {
   for (const element of root.querySelectorAll('.cv-node')) element.classList.toggle('selected', sel.has(element.dataset.node));
@@ -212,7 +219,7 @@ const filePicker = document.createElement('input'); filePicker.type = 'file'; fi
 filePicker.addEventListener('change', () => { const files = [...filePicker.files]; filePicker.value = ''; if (cv && files.length) host.addFiles(files); });
 const picker = () => filePicker.click();
 function openMenu(clientX, clientY, from = null) {
-  const { icon } = ctx, menu = $('.cv-menu'); menuState = { clientX, clientY, from };
+  const { icon } = ctx, menu = $('.cv-menu'); menuState = { clientX, clientY, from, world: toWorld(clientX, clientY) };
   menu.innerHTML = `<small>${from ? '用它生成' : '添加节点'}</small><button data-action="canvas-add" data-kind="image">${icon('image', 15)}图片</button><button data-action="canvas-add" data-kind="video">${icon('play', 15)}视频</button>${from ? '' : `<button data-action="canvas-add" data-kind="upload">${icon('upload', 15)}上传图片</button>`}`;
   menu.hidden = false; menu.style.left = `${Math.min(clientX, innerWidth - 190)}px`; menu.style.top = `${Math.min(clientY - 16, innerHeight - 170)}px`;
   if (!calm()) menu.animate([{ opacity: 0, transform: 'scale(.94)' }, { opacity: 1, transform: 'none' }], { duration: 160, easing: 'cubic-bezier(.2,.8,.2,1)' });
@@ -239,8 +246,18 @@ function onDown(event) {
   } else { drag = { kind: 'marquee', x: event.clientX, y: event.clientY, moved: false, base: event.shiftKey ? new Set(sel) : new Set() }; document.activeElement?.blur?.(); }
   if (drag) { root.setPointerCapture(event.pointerId); if (drag.kind !== 'move' || event.target.tagName !== 'VIDEO') event.preventDefault(); }
 }
+// 加号的磁吸：鼠标进到它周围一圈，圆点就朝鼠标靠过来一点。
+let pulled = null;
+function magnet(event) {
+  const handle = drag ? null : event.target.closest?.('.cv-handle');
+  if (pulled && pulled !== handle) { pulled.style.removeProperty('--mx'); pulled.style.removeProperty('--my'); pulled = null; }
+  if (!handle) return;
+  const rect = handle.getBoundingClientRect(), scale = rect.width / handle.offsetWidth || 1, limit = 15;
+  const pull = value => `${Math.max(-limit, Math.min(limit, value * .55 / scale))}px`;
+  handle.style.setProperty('--mx', pull(event.clientX - rect.left - rect.width / 2)); handle.style.setProperty('--my', pull(event.clientY - rect.top - rect.height / 2)); pulled = handle;
+}
 function onMove(event) {
-  last.x = event.clientX; last.y = event.clientY; if (!drag) return;
+  last.x = event.clientX; last.y = event.clientY; magnet(event); if (!drag) return;
   const dx = event.clientX - drag.x, dy = event.clientY - drag.y;
   if (!drag.moved && Math.hypot(dx, dy) > 3) drag.moved = true;
   if (drag.kind === 'pan') { cv.view.x = drag.vx + dx; cv.view.y = drag.vy + dy; applyView(); return; }
@@ -259,7 +276,7 @@ function onMove(event) {
     const to = toWorld(event.clientX, event.clientY), over = document.elementFromPoint(event.clientX, event.clientY)?.closest?.('.cv-node');
     for (const element of root.querySelectorAll('.cv-node.target')) element.classList.remove('target');
     const target = over && node(over.dataset.node); if (target?.source === 'gen' && !drag.from.includes(target.id)) over.classList.add('target');
-    drawEdges(tempEdges(drag.from, to));
+    drag.to = to; drawEdges();
   }
 }
 function onUp(event) {
@@ -282,9 +299,9 @@ function onUp(event) {
     }
     if (over && current.moved) return drawEdges();
     // 松手在空白处：线先留着，弹出菜单选要生成什么。
-    const point = current.moved ? { x: event.clientX, y: event.clientY } : (() => { const area = current.multi && boundsOf(current.from), out = area ? { x: area.r + 18, y: (area.t + area.b) / 2 } : anchorOut(node(current.from[0])); return { x: cv.view.x + (out.x + 90) * cv.view.k, y: cv.view.y + out.y * cv.view.k }; })();
+    const point = current.moved ? { x: event.clientX, y: event.clientY } : (() => { const area = current.multi && boundsOf(current.from), out = area ? { x: area.r + 18, y: (area.t + area.b) / 2 } : anchorOut(node(current.from[0])); return { x: cv.view.x + (out.x + 150) * cv.view.k, y: cv.view.y + out.y * cv.view.k }; })();
     openMenu(point.x, point.y, current.from);
-    drawEdges(tempEdges(current.from, toWorld(point.x, point.y)));
+    drawEdges();
   }
 }
 function onWheel(event) {
