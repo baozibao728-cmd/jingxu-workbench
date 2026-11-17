@@ -10,6 +10,6 @@
     "test": "node --test test/*.test.js",
     "check": "node --env-file-if-exists=.env src/check-config.js"
   },
-  "version": "1.4.0",
+  "version": "1.5.0",
   "updateRepository": "baozibao728-cmd/jingxu-workbench"
 }
