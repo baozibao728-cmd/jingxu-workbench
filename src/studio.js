@@ -1,13 +1,15 @@
 import { mkdir, readFile, writeFile, rename, readdir, rm, stat, copyFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, basename } from 'node:path';
 import { randomUUID, randomBytes } from 'node:crypto';
 import { now, jobActive } from './project-store.js';
 import { localImageReference } from './providers.js';
 import { validateVideoSettings } from './video-profile.js';
+import { normalizeUpload, splitMedia, trimAudio } from './media-clips.js';
 
 // 自由创作：不经过剧本和分镜，直接用一段提示词加参考图生成视频或图片。
 // 数据单独放在 _studio 目录，不属于任何项目，也不进项目导出包。
-const FILE = /^[a-z0-9_]+\.(png|jpg|webp|mp4)$/;
+const FILE = /^[a-z0-9_]+\.(png|jpg|webp|mp4|m4a|mp3)$/;
+const MEDIA_URL = /^\/studio-media\/[a-z0-9_]+\.(png|jpg|webp|mp4|m4a|mp3)$/;
 const RATIOS = ['16:9', '9:16', '1:1'];
 const MAX_PROMPT = 8000;
 const pause = ms => new Promise(done => setTimeout(done, ms));
@@ -22,9 +24,10 @@ export function cleanCanvas(input = {}, previous = {}) {
     if (!raw || typeof raw !== 'object' || !/^[a-z0-9]{6,20}$/.test(raw.id) || ids.has(raw.id)) continue;
     ids.add(raw.id);
     const settings = raw.settings && typeof raw.settings === 'object' ? raw.settings : {};
-    nodes.push({ id: raw.id, type: raw.type === 'video' ? 'video' : 'image', source: raw.source === 'upload' ? 'upload' : 'gen',
+    const type = ['video', 'audio'].includes(raw.type) ? raw.type : 'image';
+    nodes.push({ id: raw.id, type, source: raw.source === 'upload' || type === 'audio' ? 'upload' : 'gen', duration: number(raw.duration, 0, 86400, 0),
       x: number(raw.x, -1e6, 1e6, 0), y: number(raw.y, -1e6, 1e6, 0), w: number(raw.w, 120, 900, 300), ratio: number(raw.ratio, .2, 5, 16 / 9),
-      refId: /^[a-f0-9]{16}$/.test(raw.refId) ? raw.refId : '', url: /^\/studio-media\/[a-z0-9_]+\.(png|jpg|webp)$/.test(raw.url) ? raw.url : '',
+      refId: /^[a-f0-9]{16}$/.test(raw.refId) ? raw.refId : '', url: MEDIA_URL.test(raw.url) ? raw.url : '',
       itemId: /^[a-f0-9]{16}$/.test(raw.itemId) ? raw.itemId : '', prompt: text(raw.prompt, MAX_PROMPT), label: text(raw.label, 40),
       settings: { channel: text(settings.channel, 200), duration: number(settings.duration, 0, 600, 0), resolution: text(settings.resolution, 20), aspectRatio: RATIOS.includes(settings.aspectRatio) ? settings.aspectRatio : '16:9' } });
   }
@@ -74,7 +77,7 @@ export function pixelSize(resolution, aspectRatio) {
 export class Studio {
   constructor(root, workflow, { intervalMs = workflow.intervalMs } = {}) {
     this.root = join(root, '_studio'); this.workflow = workflow; this.intervalMs = intervalMs;
-    this.items = []; this.references = new Map(); this.canvases = new Map(); this.writes = Promise.resolve();
+    this.items = []; this.references = new Map(); this.clips = new Map(); this.canvases = new Map(); this.writes = Promise.resolve();
   }
 
   async init() {
@@ -83,6 +86,7 @@ export class Studio {
       const saved = JSON.parse(await readFile(join(this.root, 'studio.json'), 'utf8'));
       this.items = Array.isArray(saved.items) ? saved.items : [];
       for (const item of Array.isArray(saved.references) ? saved.references : []) this.references.set(item.id, item);
+      for (const item of Array.isArray(saved.clips) ? saved.clips : []) this.clips.set(item.id, item);
     } catch (error) { if (error.code !== 'ENOENT') throw new Error('自由创作记录读取失败'); }
     for (const name of await readdir(this.root)) {
       const match = /^canvas_([a-f0-9]{16})\.json$/.exec(name); if (!match) continue;
@@ -107,11 +111,17 @@ export class Studio {
       if (used.has(id) || Date.now() - Date.parse(reference.createdAt) < 24 * 60 * 60 * 1000) continue;
       this.references.delete(id); await rm(join(this.root, reference.file), { force: true });
     }
+    // 画布上的音视频素材：没有节点在用、又放了一天以上的，一起清掉。
+    const urls = new Set([...this.canvases.values()].flatMap(canvas => canvas.nodes.map(node => node.url)));
+    for (const [id, clip] of this.clips) {
+      if (urls.has(`/studio-media/${clip.file}`) || Date.now() - Date.parse(clip.createdAt) < 24 * 60 * 60 * 1000) continue;
+      this.clips.delete(id); await rm(join(this.root, clip.file), { force: true });
+    }
     for (const name of await readdir(this.root)) if (/\.(tmp|part)$/.test(name)) await rm(join(this.root, name), { force: true });
   }
 
   save() {
-    const content = JSON.stringify({ items: this.items, references: [...this.references.values()] }, null, 2);
+    const content = JSON.stringify({ items: this.items, references: [...this.references.values()], clips: [...this.clips.values()] }, null, 2);
     this.writes = this.writes.catch(() => {}).then(async () => {
       const temporary = join(this.root, `studio.${randomUUID()}.tmp`);
       await writeFile(temporary, content, { mode: 0o600 });
@@ -203,6 +213,36 @@ export class Studio {
       this.references.set(refId, { id: refId, file, name: '', createdAt: now() }); item.refId = refId; await this.save();
     }
     return { id: item.refId, url: `/studio-media/${this.references.get(item.refId).file}` };
+  }
+
+  // ---- 画布上的音频、视频素材 ----
+  async registerClip(result, name) {
+    const id = randomBytes(8).toString('hex'), file = basename(result.output);
+    const clip = { id, file, kind: result.kind || (result.video ? 'video' : 'audio'), name: String(name || '').slice(0, 80), duration: Math.round((result.duration || 0) * 1000) / 1000,
+      width: Number(result.video?.width) || 0, height: Number(result.video?.height) || 0, createdAt: now() };
+    this.clips.set(id, clip); await this.save();
+    return { id, kind: clip.kind, url: `/studio-media/${file}`, file, name: clip.name, duration: clip.duration, width: clip.width, height: clip.height };
+  }
+  // 上传时先落成临时文件，再整理成能播放的格式。
+  async addClip(temporary, name) {
+    const id = randomBytes(8).toString('hex');
+    try { return await this.registerClip(await normalizeUpload(temporary, join(this.root, `clip_${id}`)), name); }
+    finally { await rm(temporary, { force: true }); }
+  }
+  source(file) {
+    const name = String(file || '').replace(/^\/studio-media\//, '');
+    if (!FILE.test(name) || /\.(png|jpg|webp)$/.test(name)) fail('请选择一个音频或视频节点');
+    return join(this.root, name);
+  }
+  async splitClip(file, name = '') {
+    const path = this.source(file); await stat(path).catch(() => fail('原视频文件已经不在了', 404));
+    const id = randomBytes(8).toString('hex'), result = await splitMedia(path, join(this.root, `clip_${id}_v`), join(this.root, `clip_${id}_a`));
+    return { video: await this.registerClip({ ...result.video, kind: 'video' }, `${name}_无声`), audio: await this.registerClip({ ...result.audio, kind: 'audio' }, `${name}_音轨`) };
+  }
+  async trimClip(file, start, end, name = '') {
+    const path = this.source(file); await stat(path).catch(() => fail('原音频文件已经不在了', 404));
+    const id = randomBytes(8).toString('hex');
+    return this.registerClip({ ...(await trimAudio(path, start, end, join(this.root, `clip_${id}`))), kind: 'audio' }, `${name}_截取`);
   }
 
   canvas(id) { const canvas = this.canvases.get(id); if (!canvas) fail('画布不存在', 404); return canvas; }

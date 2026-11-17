@@ -297,6 +297,11 @@ npm start
 
 - 前端在 `public/canvas.js`，打开后是盖住整个窗口的一层（`.cv`），不走全局 `render()`。后端存取在 `src/studio.js`（`cleanCanvas`、`createCanvas` 等），每张画布一个 `data/projects/_studio/canvas_<id>.json`，接口 `/api/studio/canvases`。
 - 节点两种：图片、视频；来源两种：上传（`source:'upload'`）和生成（`source:'gen'`，`itemId` 指向自由创作的一条作品）。连线只表示“这张图是那个生成节点的参考图”，顺序就是 图1、图2…
+- 节点有三种：图片、视频、音频。图片、音频、视频都能上传（底栏“上传素材”、拖入、粘贴）。音视频走 `POST /api/studio/clips`（请求体是原始字节，`Content-Type: application/octet-stream`，文件名放 `X-File-Name`，上限 500MB），后端用 FFmpeg 整理成 mp4 / mp3 / m4a，登记在 `studio.json` 的 `clips` 里，文件名 `clip_*`。没有节点引用、放了一天以上的 clip 会在启动时清掉。
+- 单选一个有成品的节点时，上方出现工具条（`drawNodeBar`）：图片“预览、下载”，视频“分离音视频、预览、下载”，音频“截取、下载”。分离走 `POST /api/studio/split`（得到无声视频 + m4a 音轨两个新节点），截取走 `POST /api/studio/trim`（`start`、`end` 按秒），新节点放在右边并连线。处理都在 `src/media-clips.js`，需要本机装 FFmpeg。
+- 音频节点的波形在浏览器里用 `OfflineAudioContext` 解码算出来，按地址缓存；截取时在波形上拖左右把手或整段。
+- 拖节点、拉线、框选靠近窗口边缘（64px 内）时画面自动朝那边移（`edgePan`），越靠边越快。
+- 输入框右上角有放大按钮（`studio-expand`），创作页和画布里都有；画布里放大后会把画面往上挪，保证输入框在底栏上方完整露出。
 - 生成走自由创作的同一个接口。选中生成节点时，下方输入框就是自由创作那个：`setHost()` 让 `draft` 指向节点内容，增删参考图和生成由画布接管。
 - 生成出来的图要当参考图时，先调 `/api/studio/items/:id/reference` 复制登记成参考图。
 - 交互：空格或中键拖动画面；鼠标滚轮缩放，触控板双指平移、捏合缩放；空白处拖动框选；从图片节点右侧“+”拉线，松手在空白处弹菜单建节点，松手在生成节点上直接连；多选后拉线会把选中的图片一起连过去。

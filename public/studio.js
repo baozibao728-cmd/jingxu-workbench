@@ -3,7 +3,9 @@
 // 页面内的切换只改动必要的一小块，不整页重画，这样输入不会被打断，过渡也连贯。
 let ctx = null, data = null, timer = null, uploading = 0, lastJSON = '', mode = 'create';
 // 画布打开时由它接管输入框：draft 指向选中节点的内容，增删参考图和生成都交给画布处理。
-let host = null;
+let host = null, expanded = false;
+// 画布里除了图片，还能放音频和视频素材。
+const isMedia = file => /^(audio|video)\//.test(file.type);
 export function setHost(next) { host = next; closePop(); hideMenu(); hidePeek(); }
 export const draft = { kind: 'video', prompt: '', refs: [], channel: '', duration: 0, resolution: '', aspectRatio: '16:9' };
 try { Object.assign(draft, JSON.parse(localStorage.getItem('drama-studio') || '{}')); } catch {}
@@ -126,7 +128,7 @@ function hintHTML() {
   return text ? `${ctx.icon('alert', 13)}${ctx.escape(text)}` : '';
 }
 export function composerBox() {
-  return `<div class="studio-box"><div class="studio-input"><div class="studio-refs">${refsHTML()}</div><div id="studio-prompt" class="studio-editor ${draft.prompt ? '' : 'is-empty'}" contenteditable="true" role="textbox" aria-multiline="true" aria-label="提示词" spellcheck="false" data-placeholder="${placeholder()}">${editorHTML()}</div></div>
+  return `<div class="studio-box ${expanded ? 'expanded' : ''}"><button class="studio-expand" data-action="studio-expand" title="${expanded ? '收起输入框' : '放大输入框'}" aria-label="${expanded ? '收起输入框' : '放大输入框'}">${ctx.icon(expanded ? 'shrink' : 'expand', 15)}</button><div class="studio-input"><div class="studio-refs">${refsHTML()}</div><div id="studio-prompt" class="studio-editor ${draft.prompt ? '' : 'is-empty'}" contenteditable="true" role="textbox" aria-multiline="true" aria-label="提示词" spellcheck="false" data-placeholder="${placeholder()}">${editorHTML()}</div></div>
 <p class="studio-hint">${hintHTML()}</p>
 <div class="studio-bar"><div class="studio-bar-left">${barHTML()}</div><span class="spacer"></span><button class="studio-send" data-action="studio-generate" title="生成（Ctrl / ⌘ + 回车）。按厂商价格扣费" aria-label="生成" ${ready() && !uploading && draft.prompt.trim() ? '' : 'disabled'}>${glyph('up', 18)}</button></div>
 </div>`;
@@ -159,7 +161,7 @@ picker.addEventListener('change', () => { const files = [...picker.files]; picke
 
 export async function addFiles(files) {
   const images = files.filter(isImage);
-  if (host) return images.length ? host.addFiles(images) : ctx.notify('只能添加 PNG、JPEG 或 WebP 图片', true);
+  if (host) { const usable = files.filter(file => isImage(file) || isMedia(file)); return usable.length ? host.addFiles(usable) : ctx.notify('只能添加图片（PNG、JPEG、WebP）、音频或视频', true); }
   if (mode !== 'create') return;
   if (!images.length) return ctx.notify('参考图须为 PNG、JPEG 或 WebP 图片', true);
   const room = limit() - draft.refs.length - uploading;
@@ -176,11 +178,11 @@ export async function addFiles(files) {
     finally { uploading--; paint(); const added = $('.studio-refs')?.querySelectorAll('.studio-ref'); added?.[added.length - 1]?.classList.add('is-new'); }
   }
 }
-export const studioWantsDrop = event => visible() && (mode === 'create' || host) && [...(event.dataTransfer?.items || [])].some(item => item.kind === 'file' && /^image\/(png|jpeg|webp)$/.test(item.type));
+export const studioWantsDrop = event => visible() && (mode === 'create' || host) && [...(event.dataTransfer?.items || [])].some(item => item.kind === 'file' && (/^image\/(png|jpeg|webp)$/.test(item.type) || (host && /^(audio|video)\//.test(item.type))));
 export function studioDragging(on) { if (host) return; $('[data-studio-drop]')?.classList.toggle('is-dragging', on); }
 document.addEventListener('paste', event => {
   if (!visible() || ctx.state.modal) return;
-  const files = [...(event.clipboardData?.files || [])].filter(isImage);
+  const files = [...(event.clipboardData?.files || [])].filter(file => isImage(file) || (host && isMedia(file)));
   if (files.length) { event.preventDefault(); addFiles(files); return; }
   if (host && !event.target.closest?.('#studio-prompt')) return;
   // 文字一律按纯文本贴进输入框，不带网页上的格式。
@@ -345,6 +347,11 @@ addEventListener('scroll', () => { closePop(); hideMenu(); hidePeek(); }, { pass
 // ---- 按钮 ----
 export async function studioAction(action, button) {
   const { api, notify } = ctx;
+  if (action === 'studio-expand') {
+    expanded = !expanded; const box = button.closest('.studio-box'); box?.classList.toggle('expanded', expanded);
+    button.innerHTML = ctx.icon(expanded ? 'shrink' : 'expand', 15); button.title = button.ariaLabel = expanded ? '收起输入框' : '放大输入框';
+    host?.resize?.(); $('#studio-prompt')?.focus({ preventScroll: true }); return;
+  }
   if (action === 'studio-mode') {
     const next = button.dataset.mode === 'canvas' ? 'canvas' : 'create'; if (next === mode) return;
     mode = next; closePop(); hideMenu();

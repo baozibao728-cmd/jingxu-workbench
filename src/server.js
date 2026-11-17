@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { once } from 'node:events';
 import { tmpdir } from 'node:os';
-import { readFile, writeFile, stat, mkdir, rm } from 'node:fs/promises';
+import { readFile, writeFile, stat, mkdir, rm, open } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { join, extname, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
@@ -28,7 +28,7 @@ import { Studio } from './studio.js';
 
 const applicationRoot = fileURLToPath(new URL('..', import.meta.url));
 const publicRoot = join(applicationRoot, 'public');
-const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.mp4': 'video/mp4', '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.json': 'application/json; charset=utf-8' };
+const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.mp4': 'video/mp4', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.wav': 'audio/wav', '.json': 'application/json; charset=utf-8' };
 
 export async function createApplication({ root = join(applicationRoot, 'data', 'projects'), config = readConfig(), seedDemo = true, workflowOptions = {}, persistSettings = true, updateRoot = applicationRoot, restartForUpdate, updateOptions = {} } = {}) {
   config.minimax ||= { baseUrl: 'https://api.minimax.cn', apiKey: '', model: 'speech-2.8-hd' };
@@ -99,7 +99,8 @@ export async function createApplication({ root = join(applicationRoot, 'data', '
             return send(response, 403, { error: '页面已过期，请刷新后再操作' });
           }
           const zipUpload = url.pathname === '/api/projects/import' && request.headers['content-type']?.startsWith('application/zip');
-          if (!zipUpload && !request.headers['content-type']?.startsWith('application/json')) return send(response, 415, { error: '请求必须为JSON' });
+          const clipUpload = url.pathname === '/api/studio/clips' && request.headers['content-type']?.startsWith('application/octet-stream');
+          if (!zipUpload && !clipUpload && !request.headers['content-type']?.startsWith('application/json')) return send(response, 415, { error: '请求必须为JSON' });
         }
         if (url.pathname === '/api/bootstrap' && request.method === 'GET') return send(response, 200, { token, settings: settings(), providerProfiles:providers.view(), updates:updates.view(), concurrency: workflow.concurrency(), prompts: prompts.view(), projects: store.list(), capabilities, videoProfile: workflow.videoProfile(), voice: voiceStore.view(Boolean(config.minimax.apiKey)), rules: { characterSheet: characterSheetSystemPrompt() } });
         if (url.pathname === '/api/voice' && request.method === 'GET') return send(response, 200, voiceStore.view(Boolean(config.minimax.apiKey)));
@@ -129,6 +130,20 @@ export async function createApplication({ root = join(applicationRoot, 'data', '
             return send(response, 201, await studio.addReference(Buffer.from(String(input.base64 || ''), 'base64'), input.name));
           }
           if (segments[2] === 'items' && segments.length === 3 && request.method === 'POST') return send(response, 202, await studio.create(await body(request)));
+          if (segments[2] === 'clips' && segments.length === 3 && request.method === 'POST') {
+            // 音视频可能很大，不走 JSON，直接按原始字节写进临时文件。
+            const temporary = join(studio.root, `upload_${randomBytes(8).toString('hex')}.part`); let size = 0;
+            const name = (() => { try { return decodeURIComponent(String(request.headers['x-file-name'] || '')); } catch { return ''; } })();
+            try {
+              const handle = await open(temporary, 'w', 0o600);
+              try { for await (const chunk of request) { size += chunk.length; if (size > 500 * 1024 * 1024) throw Object.assign(new Error('请使用 500MB 以内的音视频文件'), { status: 413 }); await handle.write(chunk); } }
+              finally { await handle.close(); }
+              if (!size) throw new Error('文件是空的');
+            } catch (error) { await rm(temporary, { force: true }); throw error; }
+            return send(response, 201, await studio.addClip(temporary, name.replace(/\.[^.]+$/, '')));
+          }
+          if (segments[2] === 'split' && segments.length === 3 && request.method === 'POST') { const input = await body(request); return send(response, 201, await studio.splitClip(input.file, String(input.name || '').slice(0, 40))); }
+          if (segments[2] === 'trim' && segments.length === 3 && request.method === 'POST') { const input = await body(request); return send(response, 201, await studio.trimClip(input.file, input.start, input.end, String(input.name || '').slice(0, 40))); }
           if (segments[2] === 'items' && segments[4] === 'resume' && request.method === 'POST') return send(response, 202, await studio.resume(segments[3]));
           if (segments[2] === 'items' && segments.length === 4 && request.method === 'DELETE') return send(response, 200, await studio.remove(segments[3]));
           if (segments[2] === 'items' && segments[4] === 'reference' && request.method === 'POST') return send(response, 200, await studio.referenceFromItem(segments[3]));

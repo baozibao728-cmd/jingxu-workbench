@@ -156,3 +156,37 @@ test('画布：保存时清洗字段，生成图可以转成参考图，参考�
     assert.deepEqual(await reopened.removeCanvas(canvas.id), []);
   } finally { await context.close(); }
 });
+
+test('画布音视频：上传整理、分离音视频、截取音频，旧文件和非法路径都挡住', async t => {
+  const { execFileSync } = await import('node:child_process');
+  try { execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' }); } catch { return t.skip('本机没有 FFmpeg'); }
+  const root = await mkdtemp(join(tmpdir(), 'studio-clips-'));
+  await writeFile(join(root, 'package.json'), '{"version":"1.0.0"}');
+  const source = join(root, 'source.mov');
+  execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc=size=160x284:rate=12:duration=3', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=3', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', '-y', source]);
+  const app = await createApplication({ root, config: { ...config(), minimax: { apiKey: '', baseUrl: 'https://api.minimax.cn', model: 'speech-2.8-hd' } }, seedDemo: false, updateRoot: root });
+  await new Promise(done => app.server.listen(0, '127.0.0.1', done));
+  const base = `http://127.0.0.1:${app.server.address().port}`, json = { 'Content-Type': 'application/json', 'X-Workflow-Token': app.token };
+  try {
+    const raw = { 'Content-Type': 'application/octet-stream', 'X-Workflow-Token': app.token, 'X-File-Name': encodeURIComponent('片段 1.mov') };
+    assert.equal((await fetch(`${base}/api/studio/clips`, { method: 'POST', headers: { ...raw, 'X-Workflow-Token': 'x' }, body: await readFile(source) })).status, 403);
+    const uploaded = await (await fetch(`${base}/api/studio/clips`, { method: 'POST', headers: raw, body: await readFile(source) })).json();
+    assert.equal(uploaded.kind, 'video'); assert.match(uploaded.url, /^\/studio-media\/clip_[a-f0-9]+\.mp4$/); assert.equal(uploaded.name, '片段 1'); assert.ok(Math.abs(uploaded.duration - 3) < 0.3); assert.equal(uploaded.height, 284);
+    const split = await (await fetch(`${base}/api/studio/split`, { method: 'POST', headers: json, body: JSON.stringify({ file: uploaded.url, name: '片段 1' }) })).json();
+    assert.equal(split.video.kind, 'video'); assert.equal(split.audio.kind, 'audio'); assert.match(split.audio.url, /\.m4a$/); assert.equal(split.video.name, '片段 1_无声');
+    const audioResponse = await fetch(base + split.audio.url); assert.equal(audioResponse.headers.get('content-type'), 'audio/mp4');
+    const silent = await fetch(`${base}/api/studio/split`, { method: 'POST', headers: json, body: JSON.stringify({ file: split.video.url }) });
+    assert.equal(silent.status, 400); assert.match((await silent.json()).error, /没有声音/);
+    const cut = await (await fetch(`${base}/api/studio/trim`, { method: 'POST', headers: json, body: JSON.stringify({ file: split.audio.url, start: 0.5, end: 1.5, name: '片段 1_音轨' }) })).json();
+    assert.equal(cut.kind, 'audio'); assert.ok(Math.abs(cut.duration - 1) < 0.15, String(cut.duration)); assert.equal(cut.name, '片段 1_音轨_截取');
+    for (const body of [{ file: split.audio.url, start: 1, end: 1.02 }, { file: split.audio.url, start: 0, end: 30 }, { file: '../provider-settings.json', start: 0, end: 1 }, { file: '/studio-media/ref_x.png', start: 0, end: 1 }]) {
+      const bad = await fetch(`${base}/api/studio/trim`, { method: 'POST', headers: json, body: JSON.stringify(body) }); assert.notEqual(bad.status, 201);
+    }
+    const garbage = await fetch(`${base}/api/studio/clips`, { method: 'POST', headers: raw, body: 'not media' }); assert.notEqual(garbage.status, 201);
+    assert.ok(!(await readdir(join(root, '_studio'))).some(name => /^upload_/.test(name)));
+    // 画布节点引用的音视频保存后能原样读回来。
+    const canvas = await (await fetch(`${base}/api/studio/canvases`, { method: 'POST', headers: json, body: '{}' })).json();
+    const saved = await (await fetch(`${base}/api/studio/canvases/${canvas.id}`, { method: 'PATCH', headers: json, body: JSON.stringify({ nodes: [{ id: 'audio1', type: 'audio', source: 'gen', x: 0, y: 0, w: 320, url: cut.url, duration: cut.duration, label: '音频' }, { id: 'video1', type: 'video', source: 'upload', x: 0, y: 0, w: 320, url: '/studio-media/../x.mp4' }] }) })).json();
+    assert.equal(saved.nodes[0].type, 'audio'); assert.equal(saved.nodes[0].source, 'upload'); assert.equal(saved.nodes[0].url, cut.url); assert.equal(saved.nodes[1].url, '');
+  } finally { app.workflow.stopping = true; await new Promise(done => app.server.close(done)); await rm(root, { recursive: true, force: true }); }
+});

@@ -7,7 +7,7 @@ import { initStudio, openStudio, studioPage, studioAction, addFiles as addStudio
 const paths = {
   plus:'M12 5v14M5 12h14', check:'m5 12 4 4L19 6', arrow:'M5 12h14m-5-5 5 5-5 5', chevron:'m9 5 7 7-7 7',
   image:'M4 4h16v16H4zM4 16l5-5 4 4 3-3 4 4M8 8h.01', film:'M4 4h16v16H4zM8 4v16M16 4v16M4 8h4M4 16h4M16 8h4M16 16h4',
-  play:'m9 5 11 7-11 7z', edit:'m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15z',
+  play:'m9 5 11 7-11 7z', pause:'M8 5v14M16 5v14', edit:'m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15z',
   refresh:'M20 7v5h-5M4 17v-5h5M6 7a7 7 0 0 1 12-1l2 3M4 15l2 3a7 7 0 0 0 12-1',
   upload:'M12 16V3m-5 5 5-5 5 5M4 16v4h16v-4', download:'M12 3v13m-5-5 5 5 5-5M4 16v4h16v-4',
   settings:'m10 3-1 3-3 1-3 3 2 2v3l2 3 3-1 2 2 3-1 1-3 3-1 1-3-2-2V7l-3-2-3 1zM9 12a3 3 0 1 0 6 0 3 3 0 0 0-6 0',
@@ -15,7 +15,8 @@ const paths = {
   clock:'M12 8v5l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0', copy:'M9 9h12v12H9zM15 5V2H2v13h3',
   sparkle:'m12 3 2.6 6.4L21 12l-6.4 2.6L12 21l-2.6-6.4L3 12l6.4-2.6z', folder:'M3 6h6l2 2h10v12H3z',
   panel:'M4 5h16v14H4zM9.5 5v14', mic:'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3', sliders:'M4 7h9M17 7h3M4 17h3M11 17h9M15 4.5v5M9 14.5v5',
-  alert:'m12 3 10 17H2zM12 9v4M12 16h.01', save:'M5 3h13l3 3v15H3V3zM7 3v6h10V3', trash:'M4 7h16M10 11v6M14 11v6M6 7l1 14h10l1-14M9 7V4h6v3',
+  alert:'m12 3 10 17H2zM12 9v4M12 16h.01', expand:'M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7', shrink:'M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7',
+  scissors:'M6 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12', wave:'M4 10v4M8 6v12M12 9v6M16 4v16M20 10v4', split:'M3 6h12v12H3zM15 10l6-4v12l-6-4', eye:'M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6', save:'M5 3h13l3 3v15H3V3zM7 3v6h10V3', trash:'M4 7h16M10 11v6M14 11v6M6 7l1 14h10l1-14M9 7V4h6v3',
 };
 const icon = (name, size=17, extra='') => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="${extra}"><path d="${paths[name]||paths.film}"/></svg>`;
 const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
