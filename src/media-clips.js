@@ -1,17 +1,15 @@
 // 画布里的音视频处理：上传整理、分离音视频、截取音频。都交给本机的 FFmpeg。
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import { rm } from 'node:fs/promises';
+import { ffmpegTools } from './ffmpeg-tools.js';
 
-const execute = promisify(execFile);
 const LONG = { timeout: 10 * 60 * 1000, maxBuffer: 4 * 1024 * 1024 };
-const missing = error => error?.code === 'ENOENT';
-const NO_FFMPEG = '需要先安装 FFmpeg（含 ffprobe）才能处理音频和视频';
+// 没装 FFmpeg 时 ffmpegTools 会自动下载；装不上就把原因告诉用户。
+const reason = (error, fallback) => error?.install ? error.message : error?.code === 'ENOENT' ? 'FFmpeg 无法运行，请重启工作台后再试' : fallback;
 
 export async function probeMedia(path) {
   let stdout;
-  try { ({ stdout } = await execute('ffprobe', ['-v', 'error', '-show_entries', 'stream=codec_type,codec_name,width,height:format=duration,format_name', '-of', 'json', path], { timeout: 30000 })); }
-  catch (error) { throw new Error(missing(error) ? NO_FFMPEG : '读不出这个文件，请确认是能正常播放的音频或视频'); }
+  try { ({ stdout } = await ffmpegTools.run('ffprobe', ['-v', 'error', '-show_entries', 'stream=codec_type,codec_name,width,height:format=duration,format_name', '-of', 'json', path], { timeout: 30000 })); }
+  catch (error) { throw new Error(reason(error, '读不出这个文件，请确认是能正常播放的音频或视频')); }
   const info = JSON.parse(stdout), streams = info.streams || [];
   const video = streams.find(stream => stream.codec_type === 'video' && !['mjpeg', 'png'].includes(stream.codec_name));
   const audio = streams.find(stream => stream.codec_type === 'audio');
@@ -19,8 +17,8 @@ export async function probeMedia(path) {
 }
 
 async function ffmpeg(args, output) {
-  try { await execute('ffmpeg', ['-hide_banner', '-loglevel', 'error', ...args, '-y', output], LONG); }
-  catch (error) { await rm(output, { force: true }); throw new Error(missing(error) ? NO_FFMPEG : '音视频处理失败，原文件没有改动'); }
+  try { await ffmpegTools.run('ffmpeg', ['-hide_banner', '-loglevel', 'error', ...args, '-y', output], LONG); }
+  catch (error) { await rm(output, { force: true }); throw new Error(reason(error, '音视频处理失败，原文件没有改动')); }
 }
 
 // 上传的文件整理成浏览器一定能放的格式：视频 mp4，音频 mp3 原样保留，其余转成 m4a。

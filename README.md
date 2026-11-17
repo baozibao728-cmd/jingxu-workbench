@@ -41,7 +41,7 @@
 
 首次在新电脑使用时，点击左下角“接口设置”配置厂商方案。已有 `.env` 继续读取；界面保存的方案位于本机 `data/projects/provider-settings.json`，Key不会回显，更新时保留。生图默认仍使用 Grsai 中转站原生接口。
 
-视频合成需要安装 FFmpeg（包含 `ffmpeg` 和 `ffprobe`）；单个分镜的生成、播放和下载不依赖 FFmpeg。
+视频合成、分离音视频和截取音频需要 FFmpeg（包含 `ffmpeg` 和 `ffprobe`）。不用自己装：电脑上找不到 `ffmpeg` 或 `ffprobe` 时，工作台启动后会在后台从 GitHub（ffmpeg-static 的 b6.1.1 版本）自动下载对应平台的版本，校验 SHA-256 后放到 `data/tools/ffmpeg/`，更新时保留。支持 macOS（Apple 芯片和 Intel）、Windows x64 和 Linux。单个分镜的生成、播放和下载不依赖 FFmpeg。
 
 ## 制作流程
 

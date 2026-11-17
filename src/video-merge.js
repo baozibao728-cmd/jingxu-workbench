@@ -1,16 +1,15 @@
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import { mkdtemp, writeFile, rm, copyFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { ffmpegTools } from './ffmpeg-tools.js';
 
-const execute = promisify(execFile);
+const execute = (name, args, options) => ffmpegTools.run(name, args, options);
 const probe = async path => {
   try {
     const { stdout } = await execute('ffprobe', ['-v', 'error', '-show_entries', 'stream=codec_type:format=duration', '-of', 'json', path], { timeout: 30000 });
     const info = JSON.parse(stdout);
     if (!info.streams.some(stream => stream.codec_type === 'video')) throw new Error();
     return info;
-  } catch { throw new Error('无法读取视频信息，请确认已安装FFmpeg（含ffprobe），且所有片段可播放。'); }
+  } catch (error) { throw new Error(error?.install ? error.message : '无法读取视频信息，请确认所有片段可播放。'); }
 };
 
 export async function mergeVideos({ files, output, aspectRatio, temporaryRoot, onProgress = () => {} }) {

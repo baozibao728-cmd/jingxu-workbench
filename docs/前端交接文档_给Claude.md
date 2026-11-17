@@ -309,3 +309,10 @@ npm start
 - 交互：空格或中键拖动画面；鼠标滚轮缩放，触控板双指平移、捏合缩放；空白处拖动框选；从图片节点右侧“+”拉线，松手在空白处弹菜单建节点，松手在生成节点上直接连；多选后拉线会把选中的图片一起连过去。
 - 多选时出现虚线框（`.cv-selbox`），框上方有“打组 / 解组 / 删除”，右侧的“+”把选中的图片一起连出去。分组存在画布的 `groups` 里（一个节点只属于一个组），显示成节点下面的底板，拖底板整组移动，双击组名改名。
 - 没做：音频、剧本、剪辑、导演台、撤销重做、单独选中删除连线（连线在输入框的参考图上点 × 删除）。
+
+## FFmpeg 自动安装（2026-11-17 新增）
+
+- `src/ffmpeg-tools.js`：`ffmpegTools.ensure()` 先看系统里的 `ffmpeg`、`ffprobe` 能不能运行；不能就按平台从 `eugeneware/ffmpeg-static` 的 b6.1.1 Release 下载 `.gz`，边下边算 SHA-256（大小和摘要写死在 `FFMPEG_BUILDS`），解压到 `data/tools/ffmpeg/`。校验不通过就删掉，不留半截文件。
+- `src/media-clips.js`、`src/video-merge.js` 都通过 `ffmpegTools.run(name, args, options)` 调用，第一次使用时如果还在安装会等它装完。安装失败的错误带 `install: true`，原样显示给用户。
+- `src/server.js` 启动 5 秒后在后台调用一次 `ensure()`，所以更新完重启就会自动装好。测试用 `createFfmpegTools({dir, fetchImpl, platform, arch, base, builds, check})` 注入假的下载源。
+- 以后升级 FFmpeg 版本：改 `FFMPEG_RELEASE` 和 `FFMPEG_BUILDS`，大小和摘要取 GitHub Release API 里每个资源的 `size` 和 `digest`。

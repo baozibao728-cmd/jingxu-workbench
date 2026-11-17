@@ -21,6 +21,7 @@ import { testProvider } from './provider-test.js';
 import { removeLegacyPrompts } from './legacy-cleanup.js';
 import { exportPlan, writeExport, importProjects } from './project-transfer.js';
 import { UpdateManager } from './update-manager.js';
+import { ffmpegTools } from './ffmpeg-tools.js';
 import { spawn } from 'node:child_process';
 import { MiniMaxTTSProvider } from './minimax-tts.js';
 import { VoiceStore } from './voice-store.js';
@@ -306,6 +307,8 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     });
   }});
   setTimeout(()=>app.updates.tick().catch(()=>{}),3000).unref();
+  // 电脑上没有 FFmpeg 时在后台自动下载安装，分离音视频、截取音频和整集合成都要用。
+  setTimeout(()=>ffmpegTools.ensure().catch(error=>console.log(error.message)),5000).unref();
   app.server.listen(port, '127.0.0.1', () => console.log(`短剧工作台已启动：http://127.0.0.1:${port}`));
   const stop = () => { app.workflow.stopping = true; app.server.close(async () => { await rm(lock, { force: true }); process.exit(0); }); setTimeout(() => process.exit(0), 2000).unref(); };
   process.on('SIGINT', stop); process.on('SIGTERM', stop);
