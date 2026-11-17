@@ -60,7 +60,7 @@ export async function startStoryboardReparse(workflow,id,input={}){
    project.shots=work.shots;project.chunks=work.chunks;project.storyboardPrompts=work.storyboardPrompts;project.clipDuration=record.duration;project.resolution=record.resolution;delete project.mergedVideo;renumberSegments(project);project.revision++;
    record.state='completed';record.finishedAt=now();record.generated=work.shots.length;record.completed=work.chunks.length;record.total=work.chunks.length;delete record.draft;
    project.preparation={state:'completed',phase:'review',stage:`全部重新解析完成，共${project.shots.length}条，等待你检查后生成视频`,completed:work.chunks.length,total:work.chunks.length};workflow.store.log(project,`全部重解析完成：${project.shots.length}条分镜；旧版本与成片保留，没有提交图片或视频。`);
-  }catch(error){record.state='failed';record.error=workflow.errorText(error);project.preparation={...project.preparation,state:'failed',phase:'reparse-storyboards',error:record.error};workflow.store.log(project,`全部重新解析中断：${record.error}。旧分镜保留，可继续未完成的段落。`,'error');}
+  }catch(error){record.state='failed';record.error=workflow.errorText(error);project.preparation={...project.preparation,state:'failed',phase:'reparse-storyboards',error:record.error};workflow.store.log(project,`全部重新解析中断：${record.error.replace(/[。；;，,.\s]+$/,'')}。旧分镜保留，可继续未完成的段落。`,'error');}
   await workflow.store.save(project);
  });return workflow.view(project);
 }

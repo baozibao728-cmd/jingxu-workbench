@@ -1,5 +1,5 @@
 import {ApiClient} from './http.js';
-import {localImageReference,DeepSeekProvider,GrsaiImageProvider,FydmaiVideoProvider} from './providers.js';
+import {localImageReference,DeepSeekProvider,requestText,parseJsonText,textTimeout,GrsaiImageProvider,FydmaiVideoProvider} from './providers.js';
 import {readFile,mkdir,writeFile,rename,rm} from 'node:fs/promises';import {basename,dirname} from 'node:path';import {ScenetraVideoProvider,scenetraImageTag} from './scenetra.js';import {HuimiaoVideoProvider,huimiaoImageTag} from './huimiao.js';import {randomUUID} from 'node:crypto';
 export function getPath(value,path){if(!path)return undefined;return String(path).split('.').reduce((v,key)=>v?.[key],value);}
 export function expandTemplate(value,variables){
@@ -25,8 +25,8 @@ class JsonProvider{
  async getTask(id){if(!this.adapter.queryPath)throw Error('异步任务未配置查询路径');return this.normalize(await this.api.request(this.adapter.queryPath.replaceAll('{id}',encodeURIComponent(id))));}
  async generateJson({instructions,input,maxTokens}){
   const vars={model:this.config.model,instructions:`${instructions}\n只输出JSON对象。`,input,maxTokens,messages:[{role:'system',content:instructions+'\n只输出JSON对象。'},{role:'user',content:input}]};
-  const raw=await this.api.request(this.adapter.submitPath,{method:'POST',json:expandTemplate(this.adapter.request,vars)});
-  const value=getPath(raw,this.adapter.response.text);let result;try{result=typeof value==='string'?JSON.parse(value):value;}catch{throw Error('文本接口返回内容不是有效JSON');}
+  const raw=await requestText(this.api,this.adapter.submitPath,expandTemplate(this.adapter.request,vars));
+  const value=getPath(raw,this.adapter.response.text);const result=typeof value==='string'?parseJsonText(value):value;
   if(!result||typeof result!=='object'||Array.isArray(result))throw Error('文本响应字段不是JSON对象');return result;
  }
  async uploadImage(path){ return this.uploadReference(path,'image'); }
@@ -95,5 +95,5 @@ class OpenAIImageProvider{
   if(!urls.length)throw Error('图片响应没有data[].url或b64_json');return{id:`sync-${crypto.randomUUID()}`,status:'completed',urls};
  }
 }
-export function createProvider(service,config){if(config.protocol==='json')return new JsonProvider(config);if(service==='deepseek')return new DeepSeekProvider(config);if(service==='grsai')return config.protocol==='openai-images'?new OpenAIImageProvider(config):new GrsaiImageProvider(config);if(config.protocol==='openai-video')return new YingmanVideoProvider(config);if(config.protocol==='scenetra')return new ScenetraVideoProvider(config);if(config.protocol==='huimiao')return new HuimiaoVideoProvider(config);return new FydmaiVideoProvider(config);}
+export function createProvider(service,config){if(service==='deepseek'&&config.protocol==='json')return new JsonProvider({...config,timeoutMs:textTimeout(config.timeoutMs)});if(config.protocol==='json')return new JsonProvider(config);if(service==='deepseek')return new DeepSeekProvider(config);if(service==='grsai')return config.protocol==='openai-images'?new OpenAIImageProvider(config):new GrsaiImageProvider(config);if(config.protocol==='openai-video')return new YingmanVideoProvider(config);if(config.protocol==='scenetra')return new ScenetraVideoProvider(config);if(config.protocol==='huimiao')return new HuimiaoVideoProvider(config);return new FydmaiVideoProvider(config);}
 export function referenceTag(config,slot){if(config.protocol==='huimiao')return `${huimiaoImageTag(slot.index)} `;if(config.protocol==='scenetra')return `${scenetraImageTag(config.model,slot.index)} `;if(config.protocol==='openai-video')return `@图片${slot.index} `;if(config.protocol!=='json')return `@${slot.filename} `;return config.adapter.referenceTag.replaceAll('{index}',String(slot.index)).replaceAll('{name}',slot.name).replaceAll('{filename}',slot.filename)+' ';}

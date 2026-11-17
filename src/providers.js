@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { basename, extname } from 'node:path';
 import { createHash } from 'node:crypto';
-import { ApiClient } from './http.js';
+import { ApiClient, ProviderError } from './http.js';
 
 function required(value, label) {
   if (typeof value !== 'string' || !value.trim()) throw new Error(`${label}不能为空`);
@@ -18,27 +18,48 @@ export async function localImageReference(path) {
   return `data:${mime};base64,${bytes.toString('base64')}`;
 }
 
+// 文字对话没有服务端任务可查，也不会重复生成扣费成品；失败时直接说真实原因，不提示“核对服务端任务”。
+// 一次分镜输出最多上万 token，慢模型或中转站要几分钟，超时低于 10 分钟时按 10 分钟等。
+export const TEXT_MIN_TIMEOUT_MS = 600_000;
+export function textTimeout(timeoutMs) { return Math.max(Number(timeoutMs) || 120_000, TEXT_MIN_TIMEOUT_MS); }
+export async function requestText(api, path, json) {
+  try { return await api.request(path, { method: 'POST', json }); }
+  catch (error) {
+    if (!(error instanceof ProviderError)) throw error;
+    const cause = error.detail || error.message;
+    throw Object.assign(new ProviderError(`文字服务请求失败：${cause}`, { status: error.status, cause }), {
+      code: /超时/.test(cause) ? 'TEXT_TIMEOUT' : 'TEXT_REQUEST_FAILED',
+    });
+  }
+}
+// 有些模型（如 Gemini 经中转）不理会 json_object，会包一层 ```json 代码块或加一句说明。
+export function parseJsonText(content) {
+  const text = String(content).trim();
+  const attempts = [text, text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')];
+  const start = text.indexOf('{'), end = text.lastIndexOf('}');
+  if (start >= 0 && end > start) attempts.push(text.slice(start, end + 1));
+  for (const candidate of attempts) { try { return JSON.parse(candidate); } catch {} }
+  throw Object.assign(new Error(`文字服务返回的JSON不完整（收到${text.length}字，开头“${text.slice(0, 20).replace(/\s+/g, ' ')}”），本轮未保存，请重试`), { code: 'TEXT_JSON_INVALID', retryable: true });
+}
+
 export class DeepSeekProvider {
-  constructor(config) { this.config = config; this.api = new ApiClient(config); }
+  constructor(config) { this.config = config; this.api = new ApiClient({ ...config, timeoutMs: textTimeout(config.timeoutMs) }); }
 
   async generateJson({ instructions, input, maxTokens = 8192 }) {
-    const result = await this.api.request(this.config.submitPath || '/chat/completions', {
-      method: 'POST',
-      json: {
+    const result = await requestText(this.api, this.config.submitPath || '/chat/completions', {
         model: required(this.config.model, 'DeepSeek 模型'),
         messages: [
           { role: 'system', content: `${required(instructions, '规则')}\n只输出一个 JSON 对象，不要 Markdown。` },
           { role: 'user', content: required(input, '输入内容') },
         ],
         response_format: { type: 'json_object' }, max_tokens: maxTokens, stream: false,
-      },
     });
     const choice = result.choices?.[0];
     if (choice?.finish_reason === 'length') throw Object.assign(new Error('DeepSeek 输出未正常完成：达到输出长度限制，结果已截断。本轮未保存，旧分镜保留；可用全部重新解析分镜分段重试。'), {code:'TEXT_OUTPUT_TRUNCATED'});
-    if (choice?.finish_reason !== 'stop') throw new Error('DeepSeek 输出未正常完成，不能作为完整剧本或分镜保存');
+    if (String(choice?.finish_reason).toLowerCase() !== 'stop') throw new Error('DeepSeek 输出未正常完成，不能作为完整剧本或分镜保存');
     const content = choice.message?.content;
     if (typeof content !== 'string' || !content.trim()) throw new Error('DeepSeek 返回了空内容');
-    let data;try{data=JSON.parse(content);}catch{throw Error('文字服务返回的JSON不完整，本轮未保存，旧分镜保留；请重新解析。');}
+    const data = parseJsonText(content);
     if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('DeepSeek 未返回 JSON 对象');
     return data;
   }

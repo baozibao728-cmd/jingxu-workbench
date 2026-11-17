@@ -468,12 +468,15 @@ export class Workflow {
       });
       } catch (error) {
         // 输出被截断：这一段太长，自动对半拆开再解析，不让整轮中断。
-        if (error.code === 'TEXT_OUTPUT_TRUNCATED') {
+        // 文字超时同理：输出太长等不完，拆小再试一次；已因超时拆过的不再拆，避免网络不通时反复久等。
+        const timedOut = error.code === 'TEXT_TIMEOUT' && !chunk.timeoutSplit && String(chunk.text || '').length >= 1200;
+        if (error.code === 'TEXT_OUTPUT_TRUNCATED' || timedOut) {
           const halves = halveChunk(chunk);
           if (!halves) throw error;
+          if (timedOut) halves.forEach(item => { item.timeoutSplit = true; });
           project.chunks.splice(position, 1, ...halves);
           project.chunks.forEach((item, index) => { item.index = index + 1; });
-          this.store.log(project.logTarget || project, `${chunk.title} 内容较长，输出被截断，已自动拆成${halves.length}小段继续解析。`);
+          this.store.log(project.logTarget || project, `${chunk.title} 内容较长，${timedOut ? '文字服务超时未返回' : '输出被截断'}，已自动拆成${halves.length}小段继续解析。`);
           attempt = 0; continue;
         }
         // AI 偶尔漏返回或写错引用：同一段自动再试，最多共3次。
@@ -487,7 +490,8 @@ export class Workflow {
     }
   }
   errorText(error) {
-    if (error.submissionUnknown) return '提交结果暂不明确，请先核对服务端任务，避免重复生成。';
+    // 图片、视频提交可能已在服务端建任务：保持谨慎提示，但带上中断原因（超时、网络、非JSON），不再只剩一句话。
+    if (error.submissionUnknown) return `提交结果暂不明确${error.detail ? `（${clean(error.detail, 160)}）` : ''}，请先核对服务端任务，避免重复生成`;
     return clean(error.message || '任务失败，请稍后重试', 500);
   }
   async generateAsset(project, asset, options = {}) {

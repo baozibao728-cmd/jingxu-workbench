@@ -3,9 +3,10 @@ import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
 export class ProviderError extends Error {
-  constructor(message, { status, submissionUnknown = false } = {}) {
+  constructor(message, { status, submissionUnknown = false, cause } = {}) {
     super(message);
     this.status = status;
+    this.detail = cause;
     this.submissionUnknown = submissionUnknown;
   }
 }
@@ -39,23 +40,53 @@ export class ApiClient {
         body: form ?? (json === undefined ? undefined : JSON.stringify(json)),
         signal: AbortSignal.timeout(this.timeoutMs),
       });
-      const payload = await response.json();
-      if (!response.ok) {
-        throw new ProviderError(`接口返回 HTTP ${response.status}`, {
-          status: response.status,
-          submissionUnknown: method === 'POST' && response.status >= 500,
-        });
-      }
-      return payload;
     } catch (error) {
-      if (error instanceof ProviderError) throw error;
-      // 不回显请求头、Key、参考图 base64 或上游原始响应。
-      throw new ProviderError('请求中断或响应格式无效；先核对远端任务，勿自动重复提交', {
-        status: response?.status,
-        submissionUnknown: method === 'POST',
+      throw this.failure(method, transportCause(error, this.timeoutMs));
+    }
+    let payload;
+    try {
+      const text = await response.text();
+      try { payload = JSON.parse(text); } catch { payload = undefined; if (response.ok || text.trim()) payload = NOT_JSON; }
+    } catch (error) {
+      throw this.failure(method, transportCause(error, this.timeoutMs), response.status);
+    }
+    if (!response.ok) {
+      const detail = payload === NOT_JSON ? '' : upstreamMessage(payload, this.apiKey);
+      throw new ProviderError(`接口返回 HTTP ${response.status}${detail ? `：${detail}` : ''}`, {
+        status: response.status, cause: `HTTP ${response.status}${detail ? `：${detail}` : ''}`,
+        submissionUnknown: method === 'POST' && response.status >= 500,
       });
     }
+    if (payload === NOT_JSON || payload === undefined) {
+      const type = String(response.headers?.get?.('content-type') || '').split(';')[0].trim();
+      throw this.failure(method, `返回内容不是JSON（HTTP ${response.status}${type ? `，${type.slice(0, 60)}` : ''}），可能是中转站错误页或流式数据`, response.status);
+    }
+    return payload;
   }
+
+  failure(method, cause, status) {
+    // 不回显请求头、Key、参考图 base64 或上游原始响应。
+    return new ProviderError(`请求中断或响应格式无效（${cause}）；先核对远端任务，勿自动重复提交`, {
+      status, cause, submissionUnknown: method === 'POST',
+    });
+  }
+}
+
+const NOT_JSON = Symbol('not-json');
+
+function transportCause(error, timeoutMs) {
+  if (error?.name === 'TimeoutError') return `等待超过${Math.round(timeoutMs / 1000)}秒仍未返回，已超时`;
+  if (error?.name === 'AbortError') return '请求被中止';
+  const code = error?.cause?.code || error?.code;
+  return /^[A-Z][A-Z0-9_]{1,40}$/.test(String(code || '')) ? `网络中断（${code}）` : '网络中断或连接被重置';
+}
+
+function upstreamMessage(payload, apiKey) {
+  const raw = payload?.error?.message ?? payload?.error ?? payload?.message ?? payload?.msg;
+  if (typeof raw !== 'string') return '';
+  let text = raw.replace(/[\r\n\t]+/g, ' ');
+  if (apiKey) text = text.split(apiKey).join('***');
+  return text.replace(/\b(?:sk|hm_live|scnk)[-_][A-Za-z0-9_-]{6,}/g, '***').trim().slice(0, 160);
 }
 
 export async function downloadResult(url, destination, { fetchImpl = fetch, timeoutMs = 120_000 } = {}) {
