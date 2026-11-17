@@ -1,4 +1,4 @@
-import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, open, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
@@ -98,18 +98,40 @@ export async function downloadResult(url, destination, { fetchImpl = fetch, time
     return {path:destination,bytes:bytes.length};
   }
   if (new URL(url).protocol !== 'https:') throw new Error('成品下载地址必须为 HTTPS');
-  // 成品 CDN 使用公开链接；绝不附带任何服务的 API Key。
-  const response = await fetchImpl(url, { signal: AbortSignal.timeout(timeoutMs) });
-  if (!response.ok) throw new Error(`下载失败 HTTP ${response.status}`);
-  const bytes = Buffer.from(await response.arrayBuffer());
-  if (!bytes.length) throw new Error('下载结果为空');
+  // timeoutMs 是“多久没收到数据就算断了”，不是整个文件的总时长：CDN 慢也能慢慢下完。断了自动重下，最多 3 次。
+  let lastError;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try { return await streamToFile(url, destination, { fetchImpl, idleMs: timeoutMs }); }
+    catch (error) { if (error.final) throw error; lastError = error; }
+  }
+  throw new Error(`成品下载太慢或中断（${lastError?.timedOut ? `超过 ${Math.round(timeoutMs / 1000)} 秒没有收到数据` : '网络断开'}），可以点“继续查询”重新下载`);
+}
+
+async function streamToFile(url, destination, { fetchImpl, idleMs }) {
+  const controller = new AbortController();
+  let timer, timedOut = false;
+  const arm = () => { clearTimeout(timer); timer = setTimeout(() => { timedOut = true; controller.abort(); }, idleMs); };
   await mkdir(dirname(destination), { recursive: true });
   const temporary = `${destination}.${randomUUID()}.part`;
+  let file;
   try {
-    await writeFile(temporary, bytes, { mode: 0o600, flag: 'wx' });
+    arm();
+    // 成品 CDN 使用公开链接；绝不附带任何服务的 API Key。
+    const response = await fetchImpl(url, { signal: controller.signal });
+    if (!response.ok) throw Object.assign(new Error(`下载失败 HTTP ${response.status}`), { final: response.status < 500 });
+    file = await open(temporary, 'wx', 0o600);
+    let bytes = 0;
+    if (response.body) for await (const chunk of response.body) { arm(); await file.write(chunk); bytes += chunk.length; }
+    await file.close(); file = null;
+    if (!bytes) throw Object.assign(new Error('下载结果为空'), { final: true });
     await rename(temporary, destination);
+    return { path: destination, bytes };
+  } catch (error) {
+    if (error.final || /HTTP/.test(error.message)) throw error;
+    throw Object.assign(error, { timedOut });
   } finally {
+    clearTimeout(timer);
+    if (file) await file.close().catch(() => {});
     await rm(temporary, { force: true });
   }
-  return { path: destination, bytes: bytes.length };
 }

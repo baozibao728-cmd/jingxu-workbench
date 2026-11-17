@@ -118,11 +118,11 @@ export class HuimiaoVideoProvider {
     for (let attempt = 0; attempt < 20; attempt++) {
       let response, url = start;
       try {
-        response = await this.fetch(url, { headers: this.auth(), redirect: 'manual', signal: AbortSignal.timeout(180000) });
+        response = await this.fetch(url, { headers: this.auth(), redirect: 'manual', signal: AbortSignal.timeout(30 * 60 * 1000) });
         for (let hop = 0; hop < 3 && response.status >= 300 && response.status < 400; hop++) {
           url = new URL(response.headers.get('location') || '', url);
           if (url.protocol !== 'https:') throw new Error('惠喵成片下载地址必须为 HTTPS');
-          response = await this.fetch(url, { headers: url.origin === this.base.origin ? this.auth() : {}, redirect: 'manual', signal: AbortSignal.timeout(180000) });
+          response = await this.fetch(url, { headers: url.origin === this.base.origin ? this.auth() : {}, redirect: 'manual', signal: AbortSignal.timeout(30 * 60 * 1000) });
         }
       } catch (error) { if (/HTTPS/.test(error.message)) throw error; throw new Error('惠喵成片下载中断，可以点“继续查询”重新下载'); }
       if (response.status === 409) {

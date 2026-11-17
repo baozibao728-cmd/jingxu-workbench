@@ -368,7 +368,7 @@ export class Studio {
         if (task.status === 'completed') {
           const file = `out_${item.id}_${Date.now().toString(36)}.${item.kind === 'image' ? 'png' : 'mp4'}`, destination = join(this.root, file);
           if (item.kind === 'video' && typeof provider.downloadTask === 'function') await provider.downloadTask(task.id, destination);
-          else await workflow.download(task.urls[0], destination, { timeoutMs: 180000 });
+          else await workflow.download(task.urls[0], destination, { timeoutMs: 120000 });
           item.result = { file, createdAt: now() };
           item.job = { state: 'completed', progress: 100, taskId: job.taskId, message: '已完成' };
           await this.save(); return;
