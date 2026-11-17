@@ -2,12 +2,15 @@
 // 输入区的内容记在 draft 里（提示词是带 @图N 的纯文字），整页重画后原样还原；
 // 页面内的切换只改动必要的一小块，不整页重画，这样输入不会被打断，过渡也连贯。
 let ctx = null, data = null, timer = null, uploading = 0, lastJSON = '', mode = 'create';
-const draft = { kind: 'video', prompt: '', refs: [], channel: '', duration: 0, resolution: '', aspectRatio: '16:9' };
+// 画布打开时由它接管输入框：draft 指向选中节点的内容，增删参考图和生成都交给画布处理。
+let host = null;
+export function setHost(next) { host = next; closePop(); hideMenu(); hidePeek(); }
+export const draft = { kind: 'video', prompt: '', refs: [], channel: '', duration: 0, resolution: '', aspectRatio: '16:9' };
 try { Object.assign(draft, JSON.parse(localStorage.getItem('drama-studio') || '{}')); } catch {}
 draft.prompt = ''; draft.refs = [];
-const remember = () => { try { localStorage.setItem('drama-studio', JSON.stringify({ kind: draft.kind, channel: draft.channel, duration: draft.duration, resolution: draft.resolution, aspectRatio: draft.aspectRatio })); } catch {} };
-const activeJob = job => ['pending', 'submitting', 'queued', 'running', 'downloading'].includes(job?.state);
-const stateLabel = { pending: '等待开始', submitting: '正在提交', queued: '排队中', running: '生成中', downloading: '下载中', completed: '已完成', failed: '生成失败', unknown: '待核对' };
+const remember = () => { if (host) return host.change?.(); try { localStorage.setItem('drama-studio', JSON.stringify({ kind: draft.kind, channel: draft.channel, duration: draft.duration, resolution: draft.resolution, aspectRatio: draft.aspectRatio })); } catch {} };
+export const activeJob = job => ['pending', 'submitting', 'queued', 'running', 'downloading'].includes(job?.state);
+export const stateLabel = { pending: '等待开始', submitting: '正在提交', queued: '排队中', running: '生成中', downloading: '下载中', completed: '已完成', failed: '生成失败', unknown: '待核对' };
 const visible = () => ctx?.state.screen === 'studio';
 const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 const $ = selector => document.querySelector(selector);
@@ -24,11 +27,16 @@ const fade = (node, from = 6) => { if (node && !calm()) node.animate([{ opacity:
 
 export function initStudio(context) { ctx = context; }
 
+const listeners = new Set();
+export const studioData = () => data;
+export function onData(fn) { listeners.add(fn); }
+function setData(next) { data = next; for (const fn of listeners) fn(data); }
+export async function loadData() { if (!data) { setData(await ctx.api('/api/studio')); settle(); } if (!timer) timer = setInterval(refresh, 2000); return data; }
 function channel() { return data?.channels.find(item => item.value === draft.channel) || data?.channels[0] || null; }
 function limit() { return draft.kind === 'image' ? data?.image.maxReference ?? 0 : channel()?.maxReference ?? 9; }
 function ready() { const current = channel(); return draft.kind === 'video' ? Boolean(current) && !current.unavailable : Boolean(data?.image.configured); }
 // 渠道变了以后，把时长和分辨率拉回这个模型支持的范围。
-function settle() {
+export function settle() {
   const current = channel(); if (!current) return;
   draft.channel = current.value;
   if (!(draft.duration >= current.minDuration && draft.duration <= current.maxDuration)) draft.duration = current.defaultDuration;
@@ -37,12 +45,13 @@ function settle() {
 }
 
 export async function openStudio() {
-  data = await ctx.api('/api/studio'); lastJSON = JSON.stringify(data.items); settle();
+  setData(await ctx.api('/api/studio')); lastJSON = JSON.stringify(data.items); settle();
   clearInterval(timer); timer = setInterval(refresh, 2000);
+  if (mode === 'canvas') await ctx.canvas.loadList();
 }
 async function refresh() {
-  if (!visible()) { clearInterval(timer); timer = null; closePop(); hidePeek(); hideMenu(); return; }
-  try { data = await ctx.api('/api/studio'); updateFeed(); } catch {}
+  if (!visible() && !host) { clearInterval(timer); timer = null; closePop(); hidePeek(); hideMenu(); return; }
+  try { setData(await ctx.api('/api/studio')); updateFeed(); } catch {}
 }
 
 // ---- 作品列表 ----
@@ -55,7 +64,7 @@ function richPrompt(item) {
     return ref ? `<span class="studio-at mini" data-peek="${ctx.escape(ref.url)}"><img src="${ctx.escape(ref.url)}" alt="${ctx.escape(ref.name)}" data-zoom-image loading="lazy"><b>${ctx.escape(ref.name)}</b></span>` : ctx.escape(part);
   }).join('');
 }
-function mediaHTML(item) {
+export function mediaHTML(item) {
   const { escape, icon } = ctx, job = item.job, running = activeJob(job), failed = ['failed', 'unknown'].includes(job.state);
   if (item.result) return item.kind === 'video' ? `<video src="${escape(item.result.url)}" controls preload="metadata" playsinline></video>` : `<img src="${escape(item.result.url)}" alt="生成的图片" data-zoom-image tabindex="0">`;
   return `<div class="studio-pending ${failed ? 'failed' : ''}">${failed ? icon('alert', 20) : ''}<strong>${escape(running && job.message ? job.message : stateLabel[job.state] || '')}</strong>${running ? `<i class="studio-progress"><b style="width:${Math.max(6, Number(job.progress) || 0)}%"></b></i>` : ''}${failed ? `<p>${escape(job.error || '任务失败')}</p>` : ''}</div>`;
@@ -116,22 +125,25 @@ function hintHTML() {
   const text = video ? (!data.channels.length ? '还没有可用的视频渠道，先到“接口设置”添加视频方案。' : current.unavailable ? current.error : '') : (!data.image.configured ? '还没有配置生图渠道，先到“接口设置”添加。' : '');
   return text ? `${ctx.icon('alert', 13)}${ctx.escape(text)}` : '';
 }
+export function composerBox() {
+  return `<div class="studio-box"><div class="studio-input"><div class="studio-refs">${refsHTML()}</div><div id="studio-prompt" class="studio-editor ${draft.prompt ? '' : 'is-empty'}" contenteditable="true" role="textbox" aria-multiline="true" aria-label="提示词" spellcheck="false" data-placeholder="${placeholder()}">${editorHTML()}</div></div>
+<p class="studio-hint">${hintHTML()}</p>
+<div class="studio-bar"><div class="studio-bar-left">${barHTML()}</div><span class="spacer"></span><button class="studio-send" data-action="studio-generate" title="生成（Ctrl / ⌘ + 回车）。按厂商价格扣费" aria-label="生成" ${ready() && !uploading && draft.prompt.trim() ? '' : 'disabled'}>${glyph('up', 18)}</button></div>
+</div>`;
+}
 function createHTML() {
   const { icon } = ctx, video = draft.kind === 'video';
   return `<div class="studio-composer" data-studio-drop><div class="studio-tabs" role="tablist" data-kind="${draft.kind}"><i class="studio-tab-pill"></i><button role="tab" class="${video ? 'active' : ''}" aria-selected="${video}" data-action="studio-kind" data-kind="video">${icon('film', 14)}视频</button><button role="tab" class="${video ? '' : 'active'}" aria-selected="${!video}" data-action="studio-kind" data-kind="image">${icon('image', 14)}图片</button></div>
-<div class="studio-box"><div class="studio-input"><div class="studio-refs">${refsHTML()}</div><div id="studio-prompt" class="studio-editor ${draft.prompt ? '' : 'is-empty'}" contenteditable="true" role="textbox" aria-multiline="true" aria-label="提示词" spellcheck="false" data-placeholder="${placeholder()}">${editorHTML()}</div></div>
-<p class="studio-hint">${hintHTML()}</p>
-<div class="studio-bar"><div class="studio-bar-left">${barHTML()}</div><span class="spacer"></span><button class="studio-send" data-action="studio-generate" title="生成（Ctrl / ⌘ + 回车）。按厂商价格扣费" aria-label="生成" ${ready() && !uploading && draft.prompt.trim() ? '' : 'disabled'}>${glyph('up', 18)}</button></div>
-<div class="studio-drop-cover" aria-hidden="true">${icon('upload', 20)}<strong>松开添加为参考图</strong></div></div></div>
+${composerBox().replace(/<\/div>$/, `<div class="studio-drop-cover" aria-hidden="true">${icon('upload', 20)}<strong>松开添加为参考图</strong></div></div>`)}</div>
 <div class="studio-feed" id="studio-feed">${data.items.length ? data.items.map(item => card(item)).join('') : emptyFeed()}</div>`;
 }
-const canvasHTML = () => `<div class="studio-canvas"><div class="studio-canvas-card new" aria-disabled="true"><span class="studio-canvas-plus">${ctx.icon('plus', 18)}</span><strong>新建画布</strong><small>即将推出</small></div><div class="studio-canvas-card ghost"></div><div class="studio-canvas-card ghost"></div><p>画布还在开发，做好后会出现在这里。</p></div>`;
+const canvasHTML = () => ctx.canvas.listHTML();
 export function studioPage() {
   if (!data) return `<section class="studio-page"><h1 class="studio-title">自由创作</h1></section>`;
   return `<section class="studio-page"><h1 class="studio-title">自由创作</h1><div class="studio-mode" role="tablist" data-mode="${mode}"><i class="studio-mode-pill"></i><button role="tab" class="${mode === 'create' ? 'active' : ''}" data-action="studio-mode" data-mode="create">创作</button><button role="tab" class="${mode === 'canvas' ? 'active' : ''}" data-action="studio-mode" data-mode="canvas">画布</button></div><div class="studio-stage">${mode === 'canvas' ? canvasHTML() : createHTML()}</div></section>`;
 }
 // 局部重画：参考图条、底部一排按钮、生成按钮。输入框本身不动。
-function paint({ refs = true, bar = true, editor = false } = {}) {
+export function paint({ refs = true, bar = true, editor = false } = {}) {
   if (refs) { const strip = $('.studio-refs'); if (strip) strip.innerHTML = refsHTML(); }
   if (bar) { const left = $('.studio-bar-left'); if (left) left.innerHTML = barHTML(); const hint = $('.studio-hint'); if (hint) hint.innerHTML = hintHTML(); }
   const input = $('#studio-prompt');
@@ -147,6 +159,7 @@ picker.addEventListener('change', () => { const files = [...picker.files]; picke
 
 export async function addFiles(files) {
   const images = files.filter(isImage);
+  if (host) return images.length ? host.addFiles(images) : ctx.notify('只能添加 PNG、JPEG 或 WebP 图片', true);
   if (mode !== 'create') return;
   if (!images.length) return ctx.notify('参考图须为 PNG、JPEG 或 WebP 图片', true);
   const room = limit() - draft.refs.length - uploading;
@@ -163,17 +176,18 @@ export async function addFiles(files) {
     finally { uploading--; paint(); const added = $('.studio-refs')?.querySelectorAll('.studio-ref'); added?.[added.length - 1]?.classList.add('is-new'); }
   }
 }
-export const studioWantsDrop = event => visible() && mode === 'create' && [...(event.dataTransfer?.items || [])].some(item => item.kind === 'file' && /^image\/(png|jpeg|webp)$/.test(item.type));
-export function studioDragging(on) { $('[data-studio-drop]')?.classList.toggle('is-dragging', on); }
+export const studioWantsDrop = event => visible() && (mode === 'create' || host) && [...(event.dataTransfer?.items || [])].some(item => item.kind === 'file' && /^image\/(png|jpeg|webp)$/.test(item.type));
+export function studioDragging(on) { if (host) return; $('[data-studio-drop]')?.classList.toggle('is-dragging', on); }
 document.addEventListener('paste', event => {
   if (!visible() || ctx.state.modal) return;
   const files = [...(event.clipboardData?.files || [])].filter(isImage);
   if (files.length) { event.preventDefault(); addFiles(files); return; }
+  if (host && !event.target.closest?.('#studio-prompt')) return;
   // 文字一律按纯文本贴进输入框，不带网页上的格式。
   if (event.target.closest?.('#studio-prompt')) { event.preventDefault(); insertText(event.clipboardData?.getData('text/plain') || ''); }
 });
 // 移除一张参考图后，后面的图往前补位，提示词里的编号跟着改。
-function removeRef(index) {
+export function removeRef(index) {
   draft.refs.splice(index, 1); const removed = index + 1;
   draft.prompt = draft.prompt.replace(/@图(\d+)( ?)/g, (whole, digits, space) => { const n = Number(digits); return n === removed ? '' : n > removed ? `@图${n - 1}${space}` : whole; });
 }
@@ -189,11 +203,12 @@ function serialize(node) {
   }
   return out;
 }
-function sync() {
+export function sync() {
   const input = $('#studio-prompt'); if (!input) return;
   let text = serialize(input); if (!text.trim() && !input.querySelector('.studio-at')) { text = ''; if (input.innerHTML) input.innerHTML = ''; }
   draft.prompt = text.slice(0, 8000); input.classList.toggle('is-empty', !draft.prompt);
   const send = $('.studio-send'); if (send) send.disabled = !(ready() && !uploading && draft.prompt.trim());
+  host?.change?.();
 }
 let lastRange = null;
 document.addEventListener('selectionchange', () => { const selection = getSelection(), input = $('#studio-prompt'); if (input && selection.rangeCount && input.contains(selection.anchorNode)) lastRange = selection.getRangeAt(0).cloneRange(); });
@@ -333,6 +348,7 @@ export async function studioAction(action, button) {
   if (action === 'studio-mode') {
     const next = button.dataset.mode === 'canvas' ? 'canvas' : 'create'; if (next === mode) return;
     mode = next; closePop(); hideMenu();
+    if (mode === 'canvas') await ctx.canvas.loadList();
     const toggle = $('.studio-mode'); toggle.dataset.mode = mode; toggle.querySelectorAll('button').forEach(item => item.classList.toggle('active', item.dataset.mode === mode));
     const stage = $('.studio-stage'); stage.innerHTML = mode === 'canvas' ? canvasHTML() : createHTML(); lastJSON = JSON.stringify(data.items); fade(stage, 10);
     return;
@@ -362,12 +378,14 @@ export async function studioAction(action, button) {
     if (!menu.hidden) return hideMenu();
     drawMenu(button.getBoundingClientRect()); return;
   }
+  if (action === 'studio-remove-ref' && host) { hidePeek(); return host.removeRef(Number(button.dataset.index)); }
+  if (action === 'studio-generate' && host) { sync(); if (!draft.prompt.trim()) { $('#studio-prompt')?.focus(); throw new Error('请先写提示词'); } button.disabled = true; button.classList.add('busy'); try { setData(await host.generate()); } finally { button.classList.remove('busy'); paint({ refs: false, bar: false }); } if (!timer) timer = setInterval(refresh, 2000); return; }
   if (action === 'studio-remove-ref') { removeRef(Number(button.dataset.index)); hidePeek(); paint({ editor: true }); return; }
   if (action === 'studio-generate') {
     sync();
     if (!draft.prompt.trim()) { $('#studio-prompt')?.focus(); throw new Error('请先写提示词'); }
     button.disabled = true; button.classList.add('busy');
-    try { data = await api('/api/studio/items', { method: 'POST', body: { kind: draft.kind, prompt: draft.prompt, refIds: draft.refs.map(ref => ref.id), channel: draft.channel, duration: draft.duration, resolution: draft.resolution, aspectRatio: draft.aspectRatio } }); }
+    try { setData(await api('/api/studio/items', { method: 'POST', body: { kind: draft.kind, prompt: draft.prompt, refIds: draft.refs.map(ref => ref.id), channel: draft.channel, duration: draft.duration, resolution: draft.resolution, aspectRatio: draft.aspectRatio } })); }
     finally { button.classList.remove('busy'); paint({ refs: false, bar: false }); }
     draft.prompt = ''; draft.refs = []; paint({ editor: true }); updateFeed();
     notify(draft.kind === 'video' ? '已提交，视频生成需要几分钟，可以继续写下一条' : '已提交，图片马上就好');
@@ -384,9 +402,9 @@ export async function studioAction(action, button) {
     paint({ editor: true }); window.scrollTo({ top: 0, behavior: calm() ? 'instant' : 'smooth' }); $('#studio-prompt')?.focus({ preventScroll: true });
     return;
   }
-  if (action === 'studio-resume') { data = await api(`/api/studio/items/${encodeURIComponent(id)}/resume`, { method: 'POST' }); updateFeed(); notify('正在接着查询原任务'); return; }
+  if (action === 'studio-resume') { setData(await api(`/api/studio/items/${encodeURIComponent(id)}/resume`, { method: 'POST' })); updateFeed(); notify('正在接着查询原任务'); return; }
   if (action === 'studio-delete') {
     if (!confirm(item?.result ? '删除这条记录和生成的文件？删除后无法恢复。' : '删除这条记录？')) return;
-    data = await api(`/api/studio/items/${encodeURIComponent(id)}`, { method: 'DELETE' }); updateFeed(); notify('已删除');
+    setData(await api(`/api/studio/items/${encodeURIComponent(id)}`, { method: 'DELETE' })); updateFeed(); notify('已删除');
   }
 }

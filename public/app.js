@@ -2,6 +2,7 @@ import {providerModels} from './model-options.js';
 import {providerPanel,handleProviderChange,handleModelListInput,collectProviders,updatePanel,collectUpdateSettings} from './settings-ui.js';
 import { markZoomableImages, openImageViewer, imageViewerOpen } from './image-viewer.js';
 import { attachMentions } from './mentions.js';
+import { initCanvas, canvasAction, listHTML as canvasListHTML, loadList as loadCanvasList } from './canvas.js';
 import { initStudio, openStudio, studioPage, studioAction, addFiles as addStudioFiles, studioWantsDrop, studioDragging } from './studio.js';
 const paths = {
   plus:'M12 5v14M5 12h14', check:'m5 12 4 4L19 6', arrow:'M5 12h14m-5-5 5 5-5 5', chevron:'m9 5 7 7-7 7',
@@ -179,6 +180,7 @@ document.addEventListener('click',async event=>{
     if(action==='voice'){state.screen='voice';render();return;}
     if(action==='studio'){await openStudio();state.screen='studio';render();return;}
     if(action.startsWith('studio-'))return await studioAction(action,button);
+    if(action.startsWith('canvas-'))return await canvasAction(action,button);
     if(action==='library-select-mode'){state.librarySelecting=true;state.librarySelected.clear();render();return;}
     if(action==='exit-library-select-mode'){state.librarySelecting=false;state.librarySelected.clear();render();return;}
     if(action==='export-projects'){const ids=[...state.librarySelected].filter(pid=>state.projects.some(project=>project.id===pid));if(!ids.length)return notify('请先勾选要导出的剧本',true);const link=document.createElement('a');link.href=`/api/projects/export?ids=${ids.map(encodeURIComponent).join(',')}`;link.download='';document.body.append(link);link.click();link.remove();notify(`正在打包 ${ids.length} 个剧本，素材多时要等一会儿；浏览器下载完成即可。`);return;}
@@ -290,7 +292,7 @@ async function poll(){if(polling||switching)return;polling=true;try{await refres
 let reconnecting=false;
 async function reconnectAfterUpdate(){if(reconnecting)return;reconnecting=true;notify('更新完成，正在重启并重新连接…');for(let i=0;i<30;i++){await new Promise(r=>setTimeout(r,1000));try{const next=await api('/api/bootstrap');if(next.updates.version!==state.updates.version){location.reload();return;}}catch{}}reconnecting=false;notify('请刷新页面或重新双击启动工作台',true);}
 async function pollUpdates(){try{const update=await api('/api/updates');if(update.version!==state.updates.version){location.reload();return;}state.updates=update;if(update.state==='installed')reconnectAfterUpdate();const panel=document.querySelector('[data-settings-panel="updates"]');if(panel&&!panel.hidden){const status=panel.querySelector('#update-status');if(status)status.textContent=update.message||'';const button=panel.querySelector('[data-action="install-update"]');if(button)button.disabled=!['available','waiting'].includes(update.state);}}catch{}}
-initStudio({api,notify,icon,escape,render,state});
+initStudio({api,notify,icon,escape,render,state,canvas:{listHTML:canvasListHTML,loadList:loadCanvasList}});initCanvas({api,notify,icon,escape,state,openImage:openImageViewer});
 async function boot(){try{const bootstrap=await api('/api/bootstrap');Object.assign(state,{token:bootstrap.token,settings:bootstrap.settings,providerProfiles:bootstrap.providerProfiles,updates:bootstrap.updates,projects:bootstrap.projects,capabilities:bootstrap.capabilities,concurrency:bootstrap.concurrency,videoProfile:bootstrap.videoProfile,prompts:bootstrap.prompts,voice:bootstrap.voice,rules:bootstrap.rules||{}});const saved=localStorage.getItem('drama-project');const id=state.projects.find(project=>project.id===saved)?.id||state.projects[0]?.id;if(id)await loadProject(id);else render();setInterval(poll,2000);setInterval(pollUpdates,15000);}catch(error){document.querySelector('#app').innerHTML=`<div class="initial-loading"><span class="brand-mark">镜</span><p>工作台暂时无法连接</p><p class="small-text">${escape(error.message)}</p><button onclick="location.reload()">重新连接</button></div>`;}}
 await boot();
 

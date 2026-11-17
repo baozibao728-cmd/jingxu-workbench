@@ -131,6 +131,14 @@ export async function createApplication({ root = join(applicationRoot, 'data', '
           if (segments[2] === 'items' && segments.length === 3 && request.method === 'POST') return send(response, 202, await studio.create(await body(request)));
           if (segments[2] === 'items' && segments[4] === 'resume' && request.method === 'POST') return send(response, 202, await studio.resume(segments[3]));
           if (segments[2] === 'items' && segments.length === 4 && request.method === 'DELETE') return send(response, 200, await studio.remove(segments[3]));
+          if (segments[2] === 'items' && segments[4] === 'reference' && request.method === 'POST') return send(response, 200, await studio.referenceFromItem(segments[3]));
+          if (segments[2] === 'canvases' && segments.length === 3 && request.method === 'GET') return send(response, 200, studio.listCanvases());
+          if (segments[2] === 'canvases' && segments.length === 3 && request.method === 'POST') return send(response, 201, await studio.createCanvas(await body(request)));
+          if (segments[2] === 'canvases' && segments.length === 4) {
+            if (request.method === 'GET') return send(response, 200, studio.canvas(segments[3]));
+            if (request.method === 'PATCH') return send(response, 200, await studio.updateCanvas(segments[3], await body(request)));
+            if (request.method === 'DELETE') return send(response, 200, await studio.removeCanvas(segments[3]));
+          }
         }
         if (url.pathname === '/api/concurrency' && request.method === 'GET') return send(response, 200, workflow.concurrency());
         if (url.pathname === '/api/concurrency' && request.method === 'POST') {
@@ -247,7 +255,7 @@ export async function createApplication({ root = join(applicationRoot, 'data', '
       if (segments[0] === 'voice-media' && segments.length === 2 && ['GET', 'HEAD'].includes(request.method)) return await streamFile(request, response, voiceStore.file(segments[1]));
       if (!['GET', 'HEAD'].includes(request.method)) return send(response, 405, { error: '不支持的请求方法' });
       const filename = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
-      if (!['index.html', 'app.js', 'model-options.js', 'settings-ui.js', 'image-viewer.js', 'mentions.js', 'studio.js', 'backdrop.js', 'style.css'].includes(filename)) return send(response, 404, { error: '页面不存在' });
+      if (!['index.html', 'app.js', 'model-options.js', 'settings-ui.js', 'image-viewer.js', 'mentions.js', 'studio.js', 'canvas.js', 'backdrop.js', 'style.css'].includes(filename)) return send(response, 404, { error: '页面不存在' });
       return await streamFile(request, response, join(publicRoot, filename));
     } catch (error) {
       if (!response.headersSent) send(response, error.status || (error.code === 'ENOENT' ? 404 : 400), { error: error.code === 'ENOENT' ? '文件不存在' : workflow.errorText(error) });

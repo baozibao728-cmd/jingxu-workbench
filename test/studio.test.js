@@ -126,3 +126,31 @@ test('自由创作接口：需要页面令牌，参考图能上传并取回，�
     assert.equal(empty.status, 400);
   } finally { app.workflow.stopping = true; await new Promise(done => app.server.close(done)); await rm(root, { recursive: true, force: true }); }
 });
+
+test('画布：保存时清洗字段，生成图可以转成参考图，参考图不会被清理', async () => {
+  const context = await setup({ image: () => ({ submit: async () => ({ id: 'img-2', status: 'completed', urls: ['https://cdn.example/b.png'] }) }) });
+  try {
+    const { studio } = context, ref = await studio.addReference(PNG);
+    const canvas = await studio.createCanvas({ title: '  测试画布  ' });
+    assert.equal(canvas.title, '测试画布');
+    const saved = await studio.updateCanvas(canvas.id, { title: '改名', view: { x: 10, y: 'bad', k: 99 }, nodes: [
+      { id: 'node01', type: 'image', source: 'upload', x: 5, y: 6, w: 9999, refId: ref.id, url: ref.url, prompt: 'x'.repeat(9000) },
+      { id: 'node02', type: 'video', x: 1, y: 2, settings: { aspectRatio: '4:3', duration: 15 }, url: 'https://evil.example/a.png' },
+      { id: 'node01', type: 'image' }, { id: '../bad' }, null,
+    ], edges: [{ from: 'node01', to: 'node02' }, { from: 'node01', to: 'node02' }, { from: 'node01', to: 'node01' }, { from: 'ghost', to: 'node02' }] });
+    assert.equal(saved.nodes.length, 2); assert.equal(saved.nodes[0].w, 900); assert.equal(saved.nodes[0].prompt.length, 8000);
+    assert.equal(saved.nodes[1].url, ''); assert.equal(saved.nodes[1].settings.aspectRatio, '16:9');
+    assert.deepEqual(saved.edges, [{ from: 'node01', to: 'node02' }]); assert.deepEqual(saved.view, { x: 10, y: 0, k: 3 });
+    await studio.create({ kind: 'image', prompt: '一张图' }); await context.done();
+    const item = studio.view().items[0], promoted = await studio.referenceFromItem(item.id);
+    assert.equal((await studio.referenceFromItem(item.id)).id, promoted.id);
+    await studio.remove(item.id);
+    assert.ok((await readFile(studio.media(promoted.url.split('/').pop()))).length > 0);
+    // 重新打开：画布还在；画布节点用着的参考图即使过了一天也不清理。
+    studio.references.get(ref.id).createdAt = '2020-01-01T00:00:00.000Z'; await studio.save();
+    const reopened = new Studio(context.root, context.workflow); await reopened.init();
+    assert.equal(reopened.listCanvases()[0].title, '改名'); assert.ok(reopened.references.has(ref.id));
+    await assert.rejects(async () => reopened.canvas('nope'), /画布不存在/);
+    assert.deepEqual(await reopened.removeCanvas(canvas.id), []);
+  } finally { await context.close(); }
+});

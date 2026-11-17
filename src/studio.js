@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile, rename, readdir, rm, stat } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, rename, readdir, rm, stat, copyFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID, randomBytes } from 'node:crypto';
 import { now, jobActive } from './project-store.js';
@@ -12,6 +12,32 @@ const RATIOS = ['16:9', '9:16', '1:1'];
 const MAX_PROMPT = 8000;
 const pause = ms => new Promise(done => setTimeout(done, ms));
 const fail = (message, status = 400) => { throw Object.assign(new Error(message), { status }); };
+const text = (value, max) => typeof value === 'string' ? value.slice(0, max) : '';
+const number = (value, min, max, fallback) => Number.isFinite(Number(value)) ? Math.min(max, Math.max(min, Number(value))) : fallback;
+
+// 画布内容由页面维护，这里只做格式和大小上的把关，不信任传进来的任何字段。
+export function cleanCanvas(input = {}, previous = {}) {
+  const nodes = [], ids = new Set();
+  for (const raw of Array.isArray(input.nodes) ? input.nodes.slice(0, 300) : []) {
+    if (!raw || typeof raw !== 'object' || !/^[a-z0-9]{6,20}$/.test(raw.id) || ids.has(raw.id)) continue;
+    ids.add(raw.id);
+    const settings = raw.settings && typeof raw.settings === 'object' ? raw.settings : {};
+    nodes.push({ id: raw.id, type: raw.type === 'video' ? 'video' : 'image', source: raw.source === 'upload' ? 'upload' : 'gen',
+      x: number(raw.x, -1e6, 1e6, 0), y: number(raw.y, -1e6, 1e6, 0), w: number(raw.w, 120, 900, 300), ratio: number(raw.ratio, .2, 5, 16 / 9),
+      refId: /^[a-f0-9]{16}$/.test(raw.refId) ? raw.refId : '', url: /^\/studio-media\/[a-z0-9_]+\.(png|jpg|webp)$/.test(raw.url) ? raw.url : '',
+      itemId: /^[a-f0-9]{16}$/.test(raw.itemId) ? raw.itemId : '', prompt: text(raw.prompt, MAX_PROMPT), label: text(raw.label, 40),
+      settings: { channel: text(settings.channel, 200), duration: number(settings.duration, 0, 600, 0), resolution: text(settings.resolution, 20), aspectRatio: RATIOS.includes(settings.aspectRatio) ? settings.aspectRatio : '16:9' } });
+  }
+  const edges = [], seen = new Set();
+  for (const raw of Array.isArray(input.edges) ? input.edges.slice(0, 1000) : []) {
+    const key = `${raw?.from}>${raw?.to}`;
+    if (!ids.has(raw?.from) || !ids.has(raw?.to) || raw.from === raw.to || seen.has(key)) continue;
+    seen.add(key); edges.push({ from: raw.from, to: raw.to });
+  }
+  const view = input.view && typeof input.view === 'object' ? input.view : {};
+  return { id: previous.id, title: text(input.title ?? previous.title, 60).trim() || '未命名画布', createdAt: previous.createdAt || now(), updatedAt: now(),
+    view: { x: number(view.x, -1e7, 1e7, 0), y: number(view.y, -1e7, 1e7, 0), k: number(view.k, .1, 3, 1) }, nodes, edges };
+}
 
 export function imageKind(bytes) {
   if (bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return 'png';
@@ -40,7 +66,7 @@ export function pixelSize(resolution, aspectRatio) {
 export class Studio {
   constructor(root, workflow, { intervalMs = workflow.intervalMs } = {}) {
     this.root = join(root, '_studio'); this.workflow = workflow; this.intervalMs = intervalMs;
-    this.items = []; this.references = new Map(); this.writes = Promise.resolve();
+    this.items = []; this.references = new Map(); this.canvases = new Map(); this.writes = Promise.resolve();
   }
 
   async init() {
@@ -50,6 +76,10 @@ export class Studio {
       this.items = Array.isArray(saved.items) ? saved.items : [];
       for (const item of Array.isArray(saved.references) ? saved.references : []) this.references.set(item.id, item);
     } catch (error) { if (error.code !== 'ENOENT') throw new Error('自由创作记录读取失败'); }
+    for (const name of await readdir(this.root)) {
+      const match = /^canvas_([a-f0-9]{16})\.json$/.exec(name); if (!match) continue;
+      try { const canvas = JSON.parse(await readFile(join(this.root, name), 'utf8')); if (canvas.id === match[1]) this.canvases.set(canvas.id, canvas); } catch {}
+    }
     await this.sweep();
     let changed = false;
     for (const item of this.items) {
@@ -64,7 +94,7 @@ export class Studio {
 
   // 清掉一天前上传、但没有任何记录在用的参考图。
   async sweep() {
-    const used = new Set(this.items.flatMap(item => item.refs.map(ref => ref.id)));
+    const used = new Set([...this.items.flatMap(item => [item.refId, ...item.refs.map(ref => ref.id)]), ...[...this.canvases.values()].flatMap(canvas => canvas.nodes.map(node => node.refId))]);
     for (const [id, reference] of this.references) {
       if (used.has(id) || Date.now() - Date.parse(reference.createdAt) < 24 * 60 * 60 * 1000) continue;
       this.references.delete(id); await rm(join(this.root, reference.file), { force: true });
@@ -153,6 +183,43 @@ export class Studio {
     }
     this.items.unshift(item); await this.save(); this.queue(item);
     return this.view();
+  }
+
+  // 画布里把一张生成好的图当参考图用：复制一份登记为参考图，原作品删掉也不影响。
+  async referenceFromItem(id) {
+    const item = this.item(id);
+    if (item.kind !== 'image' || !item.result) fail('只有生成好的图片才能作为参考图');
+    if (!item.refId || !this.references.has(item.refId)) {
+      const refId = randomBytes(8).toString('hex'), file = `ref_${refId}.png`;
+      await copyFile(join(this.root, item.result.file), join(this.root, file));
+      this.references.set(refId, { id: refId, file, name: '', createdAt: now() }); item.refId = refId; await this.save();
+    }
+    return { id: item.refId, url: `/studio-media/${this.references.get(item.refId).file}` };
+  }
+
+  canvas(id) { const canvas = this.canvases.get(id); if (!canvas) fail('画布不存在', 404); return canvas; }
+  listCanvases() {
+    return [...this.canvases.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map(canvas => ({ id: canvas.id, title: canvas.title, updatedAt: canvas.updatedAt, count: canvas.nodes.length,
+      thumbs: canvas.nodes.filter(node => node.url).slice(0, 3).map(node => node.url) }));
+  }
+  async writeCanvas(canvas) {
+    this.canvases.set(canvas.id, canvas);
+    const content = JSON.stringify(canvas);
+    this.writes = this.writes.catch(() => {}).then(async () => {
+      const temporary = join(this.root, `canvas_${canvas.id}.${randomUUID()}.tmp`);
+      await writeFile(temporary, content, { mode: 0o600 }); await rename(temporary, join(this.root, `canvas_${canvas.id}.json`));
+    });
+    await this.writes; return canvas;
+  }
+  async createCanvas(input = {}) {
+    if (this.canvases.size >= 200) fail('画布数量已达上限，请先删除不用的画布');
+    return this.writeCanvas(cleanCanvas({ title: input.title }, { id: randomBytes(8).toString('hex') }));
+  }
+  async updateCanvas(id, input) { return this.writeCanvas(cleanCanvas(input, this.canvas(id))); }
+  async removeCanvas(id) {
+    this.canvas(id); this.canvases.delete(id);
+    this.writes = this.writes.catch(() => {}).then(() => rm(join(this.root, `canvas_${id}.json`), { force: true }));
+    await this.writes; return this.listCanvases();
   }
 
   async resume(id) {
