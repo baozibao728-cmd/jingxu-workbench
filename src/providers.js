@@ -39,6 +39,9 @@ export function parseJsonText(content) {
   const start = text.indexOf('{'), end = text.lastIndexOf('}');
   if (start >= 0 && end > start) attempts.push(text.slice(start, end + 1));
   for (const candidate of attempts) { try { return JSON.parse(candidate); } catch {} }
+  // 以 { 开头却没有收尾的 }：模型写到一半就停了（部分中转站截断时仍报 stop），按输出截断处理，分镜会自动拆小段重试。
+  const body = attempts[1];
+  if (body.startsWith('{') && !body.endsWith('}')) throw Object.assign(new Error(`文字服务返回的JSON只写了一半（收到${text.length}字就结束了），结果已截断，本轮未保存`), { code: 'TEXT_OUTPUT_TRUNCATED' });
   throw Object.assign(new Error(`文字服务返回的JSON不完整（收到${text.length}字，开头“${text.slice(0, 20).replace(/\s+/g, ' ')}”），本轮未保存，请重试`), { code: 'TEXT_JSON_INVALID', retryable: true });
 }
 

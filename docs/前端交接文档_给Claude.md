@@ -338,6 +338,6 @@ npm start
 
 - 起因：Windows 上“全部重新解析分镜”反复报“提交结果暂不明确，请先核对服务端任务”，真实原因（超时、中转站返回 HTML、网络断）被吞；日志还多一个句号“。。”。
 - `src/http.js`：`ApiClient` 先读文本再解析，错误带 `detail`（`ProviderError.detail`）：`等待超过N秒仍未返回，已超时`、`网络中断（ECONNRESET 等）`、`返回内容不是JSON（HTTP 200，text/html）`、`HTTP 401：上游错误说明`（说明最多 160 字，Key 与 `sk-…` 等形式替换成 `***`，HTML 错误页正文不回显）。图片、视频的 POST 仍标记 `submissionUnknown`，`errorText` 仍提示核对服务端任务，但括号里带上原因。
-- `src/providers.js`：文字调用统一走 `requestText`，失败改成普通 `ProviderError`（`submissionUnknown: false`，`code` 为 `TEXT_TIMEOUT` 或 `TEXT_REQUEST_FAILED`），显示“文字服务请求失败：原因”。文字对话没有服务端任务可查，不会重复生成扣费成品。`parseJsonText` 能读 ```json 代码块或前后带说明的回复（Gemini 经悟空等中转常这样），真不完整时说明收到多少字，并标 `retryable` 让分镜同段自动再试。`finish_reason` 不区分大小写。
+- `src/providers.js`：文字调用统一走 `requestText`，失败改成普通 `ProviderError`（`submissionUnknown: false`，`code` 为 `TEXT_TIMEOUT` 或 `TEXT_REQUEST_FAILED`），显示“文字服务请求失败：原因”。文字对话没有服务端任务可查，不会重复生成扣费成品。`parseJsonText` 能读 ```json 代码块或前后带说明的回复（Gemini 经悟空等中转常这样），以 `{` 开头却没收尾（部分中转站截断时仍报 `finish_reason: stop`）按 `TEXT_OUTPUT_TRUNCATED` 处理，分镜自动对半拆段；其他读不出的内容说明收到多少字，并标 `retryable` 让分镜同段自动再试。`finish_reason` 不区分大小写。
 - 超时取舍：分镜一次最多 24000 token，慢模型或中转站要好几分钟，原来默认 120 秒必然超时。文字方案（含自定义 json 协议的文字方案）的超时低于 10 分钟时按 10 分钟（`TEXT_MIN_TIMEOUT_MS`）；设置里填更长的照用。代价是网络真不通时要等满 10 分钟才报错。全部重新解析遇到文字超时、且该段 ≥1200 字时，像输出截断一样自动对半拆开再解析，同一段只因超时拆一次（最坏多等一轮），段落上限 2600 字不变以保持上下文连贯。
 - `src/storyboard-reparse.js` 中断日志去掉错误末尾的标点后再接“。旧分镜保留…”；`studio.js` 的“原因：”只在没有 `detail` 时追加。测试在 `test/text-errors.test.js`。
