@@ -67,8 +67,9 @@ function toggleEmpty() { $('.cv-empty').hidden = cv.nodes.length > 0; }
 const anchorOut = item => ({ x: item.x + item.w, y: item.y + LABEL + height(item) / 2 });
 const anchorIn = item => ({ x: item.x, y: item.y + LABEL + height(item) / 2 });
 const curve = (a, b) => { const bend = Math.max(60, Math.abs(b.x - a.x) / 2); return `M${a.x},${a.y} C${a.x + bend},${a.y} ${b.x - bend},${b.y} ${b.x},${b.y}`; };
+const tempEdges = (from, to) => from.map(id => { const d = curve(anchorOut(node(id)), to); return `<path class="lit" d="${d}"/><path class="glow" d="${d}"/>`; }).join('');
 function drawEdges(extra = '') {
-  $('.cv-edges').innerHTML = cv.edges.map(edge => { const from = node(edge.from), to = node(edge.to); if (!from || !to) return ''; const busy = activeJob(itemOf(to)?.job), lit = sel.has(from.id) || sel.has(to.id); return `<path class="${busy ? 'flow' : ''} ${lit ? 'lit' : ''}" d="${curve(anchorOut(from), anchorIn(to))}"/>`; }).join('') + extra;
+  $('.cv-edges').innerHTML = cv.edges.map(edge => { const from = node(edge.from), to = node(edge.to); if (!from || !to) return ''; const busy = activeJob(itemOf(to)?.job), lit = sel.has(from.id) || sel.has(to.id); const d = curve(anchorOut(from), anchorIn(to)); return `<path class="${lit ? 'lit' : ''}" d="${d}"/>${busy || lit ? `<path class="glow ${busy ? 'fast' : ''}" d="${d}"/>` : ''}`; }).join('') + extra;
 }
 function paintSelection() {
   for (const element of root.querySelectorAll('.cv-node')) element.classList.toggle('selected', sel.has(element.dataset.node));
@@ -105,7 +106,7 @@ function bind() {
   Object.assign(draft, { kind: target.type, prompt: target.prompt, refs: sources(target).map(item => ({ id: item.refId, url: item.url || BLANK, nodeId: item.id })), ...target.settings });
   settle();
   panel.innerHTML = composerBox(); panel.hidden = false; placePanel();
-  if (!same && !calm()) panel.animate([{ opacity: 0, transform: 'translateY(-8px)' }, { opacity: 1, transform: 'none' }], { duration: 240, easing: 'cubic-bezier(.2,.8,.2,1)' });
+  if (!same && !calm()) panel.firstElementChild?.animate([{ opacity: 0, transform: 'translateY(-8px)' }, { opacity: 1, transform: 'none' }], { duration: 240, easing: 'cubic-bezier(.2,.8,.2,1)' });
 }
 function placePanel(animate = false) {
   const panel = $('.cv-panel'); if (!bound || panel.hidden) return;
@@ -237,7 +238,7 @@ function onMove(event) {
     const to = toWorld(event.clientX, event.clientY), over = document.elementFromPoint(event.clientX, event.clientY)?.closest?.('.cv-node');
     for (const element of root.querySelectorAll('.cv-node.target')) element.classList.remove('target');
     const target = over && node(over.dataset.node); if (target?.source === 'gen' && !drag.from.includes(target.id)) over.classList.add('target');
-    drawEdges(drag.from.map(id => `<path class="temp" d="${curve(anchorOut(node(id)), to)}"/>`).join(''));
+    drawEdges(tempEdges(drag.from, to));
   }
 }
 function onUp(event) {
@@ -261,7 +262,7 @@ function onUp(event) {
     // 松手在空白处：线先留着，弹出菜单选要生成什么。
     const point = current.moved ? { x: event.clientX, y: event.clientY } : (() => { const out = anchorOut(node(current.from[0])); return { x: cv.view.x + (out.x + 90) * cv.view.k, y: cv.view.y + out.y * cv.view.k }; })();
     openMenu(point.x, point.y, current.from);
-    drawEdges(current.from.map(id => `<path class="temp" d="${curve(anchorOut(node(id)), toWorld(point.x, point.y))}"/>`).join(''));
+    drawEdges(tempEdges(current.from, toWorld(point.x, point.y)));
   }
 }
 function onWheel(event) {
