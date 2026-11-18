@@ -42,7 +42,7 @@ export class ProjectStore {
     const id = randomUUID();
     const project = {
       id, title: String(input.title || '未命名短剧').slice(0, 80), script: String(input.script || ''),
-      style: String(input.style || '写实电影'), aspectRatio: input.aspectRatio || '16:9',
+      style: String(input.style || ''), aspectRatio: input.aspectRatio || '16:9',
       clipDuration: Number(input.clipDuration || 15), resolution: input.resolution || '720p', ruleNotes: String(input.ruleNotes || ''),
       characterPencil: input.characterPencil === true,
       autoVoice: input.autoVoice === true,

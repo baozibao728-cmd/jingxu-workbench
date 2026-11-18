@@ -61,7 +61,7 @@ export async function createApplication({ root = join(applicationRoot, 'data', '
   const pkg=JSON.parse(await readFile(join(applicationRoot,'package.json'),'utf8'));
   const updates=new UpdateManager(updateRoot,{isBusy:busy,restart:restartForUpdate,repository:pkg.updateRepository||'',...updateOptions});await updates.init();
   const retryUpdateTimer=setInterval(()=>{if(updates.status.state==='waiting'&&updates.config.autoCheck&&updates.config.autoInstall&&!updates.busy)updates.install().catch(()=>{});},5000);retryUpdateTimer.unref();
-  const updateTimer=setInterval(()=>updates.tick().catch(()=>{}),30*60*1000);updateTimer.unref();
+  const updateTimer=setInterval(()=>updates.tick().catch(()=>{}),3*60*1000);updateTimer.unref();
 
   const settings = () => Object.fromEntries(Object.entries(config).map(([name,item])=>[name,safeProvider(item)]));
   const send = (response, status, data) => {
