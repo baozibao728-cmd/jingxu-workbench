@@ -6,7 +6,7 @@
 - 技术栈：Node.js 原生 HTTP 服务 + 原生 JavaScript + 原生 CSS，无前端框架和 npm 依赖
 - 启动命令：`npm start`
 - 本机地址：`http://127.0.0.1:6040/`
-- 当前本机版本：`1.5.10`
+- 当前本机版本：`1.5.11`
 - 前端入口：`public/index.html`、`public/app.js`、`public/style.css`
 - 设置页组件：`public/settings-ui.js`
 - 图片查看器：`public/image-viewer.js`
