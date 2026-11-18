@@ -6,7 +6,15 @@ export const imageModelPresets=[
  {id:'gpt-image-2.6-flare',label:'GPT Image 2.6 Flare'},
  {id:'gpt-image-2.6-sunburst',label:'GPT Image 2.6 Sunburst'},
 ];
-const labels=new Map(imageModelPresets.map(m=>[m.id,m.label]));
+export const voiceModelPresets=[
+ {id:'speech-2.8-hd',label:'Speech 2.8 HD'},
+ {id:'speech-2.8-turbo',label:'Speech 2.8 Turbo'},
+ {id:'speech-2.6-hd',label:'Speech 2.6 HD'},
+ {id:'speech-2.6-turbo',label:'Speech 2.6 Turbo'},
+ {id:'speech-02-hd',label:'Speech 02 HD'},
+ {id:'speech-02-turbo',label:'Speech 02 Turbo'},
+];
+const labels=new Map([...imageModelPresets,...voiceModelPresets].map(m=>[m.id,m.label]));
 export function normalizeModels(value,current=''){
  const source=typeof value==='string'?value.split(/\r?\n/).filter(x=>x.trim()):value??[];
  if(!Array.isArray(source)||source.length>100)throw Error('模型列表最多100项，每行一个型号');
@@ -23,5 +31,5 @@ export function normalizeModels(value,current=''){
  if(current&&!seen.has(current))items.unshift({id:current,label:labels.get(current)||current});
  if(items.length>100)throw Error('模型列表最多100项');return items;
 }
-export function providerModels(profile){return normalizeModels(profile.models??(profile.service==='grsai'&&(!profile.protocol||profile.protocol==='grsai')?imageModelPresets:[]),profile.model||'');}
+export function providerModels(profile){return normalizeModels(profile.models??(profile.service==='grsai'&&(!profile.protocol||profile.protocol==='grsai')?imageModelPresets:profile.service==='minimax'&&(!profile.protocol||profile.protocol==='minimax')?voiceModelPresets:[]),profile.model||'');}
 export function modelLines(models){return models.map(m=>m.label===m.id?m.id:`${m.id} | ${m.label}`).join('\n');}

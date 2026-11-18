@@ -30,3 +30,22 @@ test('删除方案：使用中的不能删，删掉的从列表收起但旧任�
   await s.remove([first]);assert.equal(s.view().profiles.find(p=>p.id===first).archived,true);assert.equal(s.byId(first).model,'legacy');assert.equal(s.config().grsai.id,second);
   await assert.rejects(s.remove([first]));const reload=new ProviderSettings(path,initial());await reload.init();assert.equal(reload.byId(first).archived,true);assert.ok(!JSON.stringify(reload.view()).includes('secret-'));
  }finally{await rm(root,{recursive:true,force:true});}});
+
+test('语音合成默认包含 MiniMax 预设；可在接口设置配置 Key 并测试，不回传 Key',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'jingxu-minimax-'));
+ try{
+  const path=join(root,'providers.json'),s=new ProviderSettings(path,initial());await s.init();
+  const minimaxCatalog=s.view().catalog.minimax;
+  assert.ok(minimaxCatalog.some(x=>x.id==='minimax'&&x.baseUrl==='https://api.minimax.cn'&&x.model==='speech-2.8-hd'));
+  assert.equal(s.config().minimax.protocol,'minimax');
+  await s.save({minimax:{apiKey:'secret-minimax-key',model:'speech-2.8-turbo'}});
+  assert.equal(s.config().minimax.apiKey,'secret-minimax-key');
+  assert.equal(s.config().minimax.model,'speech-2.8-turbo');
+  assert.ok(!JSON.stringify(s.view()).includes('secret-minimax-key'));
+  const {testProvider}=await import('../src/provider-test.js');
+  const ok=await testProvider(s.config().minimax,{fetchImpl:async()=>Response.json({base_resp:{status_code:0}})});
+  assert.equal(ok.level,'ok');
+  const low=await testProvider(s.config().minimax,{fetchImpl:async()=>Response.json({base_resp:{status_code:1008}})});
+  assert.equal(low.level,'fail');assert.match(low.message,/余额不足/);
+ }finally{await rm(root,{recursive:true,force:true});}
+});

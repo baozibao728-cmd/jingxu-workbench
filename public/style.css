@@ -763,3 +763,5 @@ html[data-theme=light]{--title-shine:#d9772f}
 .prompt-import-bar.is-dragging{border-color:var(--accent);background:var(--accent-soft)}
 .prompt-nav button{display:flex;align-items:center;justify-content:space-between;gap:6px;width:100%}
 .prompt-nav-dot{width:7px;height:7px;border-radius:50%;background:var(--green);flex-shrink:0}
+.auto-save-status{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--green);padding:4px 10px;border-radius:999px;background:var(--green-soft);border:1px solid var(--green-line);white-space:nowrap}
+.auto-save-status.is-dirty,.auto-save-status.is-saving{color:var(--accent-ink);background:var(--accent-soft);border-color:var(--accent-line)}

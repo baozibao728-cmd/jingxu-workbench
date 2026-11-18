@@ -116,10 +116,21 @@ async function testMedia(profile,service,fetchImpl){
  return {level:'reachable',message:`服务可以连通，但这家厂商没有可免费校验 Key 的接口，Key 是否有效要到真正生成时才知道。${note}`};
 }
 
+async function testVoice(profile,fetchImpl){
+ const result=await call(profile,'/v1/t2a_v2',{method:'POST',json:{model:profile.model||'speech-2.8-hd',text:'测试',stream:false,voice_setting:{voice_id:'male-qn-qingse',speed:1,vol:1,pitch:0}},fetchImpl});
+ const bad=rejected(result);if(bad)return bad;
+ const code=result.payload?.base_resp?.status_code;
+ if(code===1004)return fail('Key 被 MiniMax 拒绝（1004）：请检查 API Key 是否正确。');
+ if(code===1008)return fail('Key 有效，但 MiniMax 账户余额不足（1008），请先充值。');
+ if(code!==undefined&&code!==0)return fail(`MiniMax 返回错误（${code}）：${result.payload?.base_resp?.status_msg||'请求失败'}`);
+ if(result.status>=400)return fail(`请求被拒绝（HTTP ${result.status}），请检查模型 ID 或接口地址。`);
+ return {level:'ok',message:`语音接口可用：Key 和模型 ${profile.model} 验证通过。`};
+}
+
 export async function testProvider(profile,{fetchImpl=fetch}={}){
  if(!profile||!profile.service)return fail('厂商方案不存在。');
  try{new ApiClient(profile);}catch(error){return fail(error.message);}
  if(!profile.apiKey)return fail('这个方案还没有填 Key。');
  if(!profile.model)return fail('这个方案还没有选模型。');
- return profile.service==='deepseek'?testText(profile,fetchImpl):testMedia(profile,profile.service,fetchImpl);
+ return profile.service==='deepseek'?testText(profile,fetchImpl):profile.service==='minimax'?testVoice(profile,fetchImpl):testMedia(profile,profile.service,fetchImpl);
 }

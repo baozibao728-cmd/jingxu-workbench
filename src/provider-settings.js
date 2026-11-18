@@ -1,4 +1,4 @@
-import {providerModels,normalizeModels} from '../public/model-options.js';
+import {providerModels,normalizeModels,voiceModelPresets} from '../public/model-options.js';
 import {readFile,writeFile,mkdir,rename} from 'node:fs/promises';
 import {dirname} from 'node:path';
 import {randomUUID} from 'node:crypto';
@@ -10,9 +10,10 @@ export const providerCatalog={
  deepseek:[{id:'deepseek',label:'DeepSeek',icon:'deepseek',protocol:'openai-chat',baseUrl:'https://api.deepseek.com',submitPath:'/chat/completions'},{id:'gemini',label:'Gemini',icon:'gemini',protocol:'openai-chat',baseUrl:'https://generativelanguage.googleapis.com',submitPath:'/v1beta/openai/chat/completions'},{id:'claude',label:'Claude',icon:'claude',protocol:'openai-chat',baseUrl:'https://api.anthropic.com',submitPath:'/v1/chat/completions'},{id:'gpt',label:'GPT',icon:'gpt',protocol:'openai-chat',baseUrl:'https://api.openai.com',submitPath:'/v1/chat/completions'},{id:'wkapi',label:'悟空 API（wkapi）',protocol:'openai-chat',baseUrl:'https://wkapi.work',submitPath:'/v1/chat/completions',model:'gemini-3.8-flash',models:[{id:'gemini-3.8-flash',label:'Gemini 3.8 Flash'},{id:'gemini-3.1-pro',label:'Gemini 3.1 Pro'},{id:'gemini-4-argon',label:'Gemini 4 Argon'},{id:'claude-sonnet-4-6',label:'Claude Sonnet 4.6（需 Claude 分组的 Key）'}]},{id:'openai',label:'OpenAI 兼容（中转站）',protocol:'openai-chat',baseUrl:'',submitPath:'/v1/chat/completions'},{id:'custom',label:'自定义厂商',protocol:'json',baseUrl:''}],
  grsai:[{id:'grsai',label:'Grsai 中转站',protocol:'grsai',baseUrl:'https://grsaiapi.com'},{id:'openai',label:'OpenAI Images 兼容',protocol:'openai-images',baseUrl:'',submitPath:'/v1/images/generations'},{id:'custom',label:'自定义厂商',protocol:'json',baseUrl:''}],
  fydmai:[{id:'fydmai',label:'菲阳动漫',protocol:'fydmai',baseUrl:'https://fydmai.com'},{id:'yingman',label:'萤漫 OpenAI兼容视频',protocol:'openai-video',baseUrl:'https://yingman.xlapis.com',submitPath:'/v1/videos',model:'seedance-2.5-cc',models:[{id:'seedance-2.5-cc',label:'Seedance 2.5'},{id:'seedance-2.5-flash-cc',label:'Seedance 2.5 Flash'}],capabilities:{minDuration:4,maxDuration:30,defaultDuration:30,resolutions:['480p','720p'],defaultResolution:'720p',maxReference:10}},{id:'huimiao',label:'惠喵 Huimiao',protocol:'huimiao',baseUrl:'https://huimiaovip.com',model:HUIMIAO_DEFAULT,models:huimiaoPresetModels(),capabilities:{minDuration:4,maxDuration:15,defaultDuration:10,resolutions:['720p'],defaultResolution:'720p',maxReference:9}},{id:'scenetra',label:'Scenetra',protocol:'scenetra',baseUrl:'https://app.scenetra.com',model:SCENETRA_DEFAULT,models:scenetraPresetModels()},{id:'custom',label:'自定义厂商 / 兼容视频接口',protocol:'json',baseUrl:''}],
+ minimax:[{id:'minimax',label:'MiniMax 语音合成',protocol:'minimax',baseUrl:'https://api.minimax.cn',model:'speech-2.8-hd',models:voiceModelPresets},{id:'custom',label:'自定义语音厂商',protocol:'json',baseUrl:''}],
 };
 export const providerIcons=['','deepseek','gemini','claude','gpt','letter'];
-export const protocolDefaults={deepseek:'openai-chat',grsai:'grsai',fydmai:'fydmai'};
+export const protocolDefaults={deepseek:'openai-chat',grsai:'grsai',fydmai:'fydmai',minimax:'minimax'};
 export const customExample={
  submitPath:'/v1/tasks',queryPath:'/v1/tasks/{id}',uploadPath:'',uploadField:'file',uploadResultPath:'assetId',
  request:{model:'{{model}}',prompt:'{{prompt}}',duration:'{{duration}}',aspect_ratio:'{{aspectRatio}}',images:'{{images}}',referenceAudios:'{{referenceAudios}}'},
@@ -25,7 +26,7 @@ export function safeProvider(config){
 }
 export function validateProvider(service,input){
  const protocol=input.protocol||protocolDefaults[service];
- const allowed={deepseek:['openai-chat','json'],grsai:['grsai','openai-images','json'],fydmai:['fydmai','openai-video','huimiao','scenetra','json']};
+ const allowed={deepseek:['openai-chat','json'],grsai:['grsai','openai-images','json'],fydmai:['fydmai','openai-video','huimiao','scenetra','json'],minimax:['minimax','json']};
  if(!allowed[service]?.includes(protocol))throw Error('请选择该用途支持的接口协议');
  if(!input.baseUrl||!input.model)throw Error('请填写API基础地址和模型ID');
  if(input.icon!==undefined&&!providerIcons.includes(input.icon))throw Error('图标选项无效');
@@ -53,8 +54,8 @@ export function validateProvider(service,input){
 }
 
 export class ProviderSettings{
- constructor(path,initial){this.path=path;this.writes=Promise.resolve();this.profiles={};this.selected={};for(const service of Object.keys(protocolDefaults)){const id=`${service}-legacy`;this.profiles[id]={...initial[service],id,name:providerCatalog[service][0].label,service,protocol:protocolDefaults[service],timeoutMs:120000};this.profiles[id].models=providerModels(this.profiles[id]);this.selected[service]=id;}}
- async init(){try{const saved=JSON.parse(await readFile(this.path,'utf8'));if(!saved.profiles||!saved.selected)throw Error('厂商配置文件不完整');this.profiles=saved.profiles;this.selected=saved.selected;for(const profile of Object.values(this.profiles))profile.models=providerModels(profile);}catch(e){if(e.code!=='ENOENT')throw e;}}
+ constructor(path,initial={}){this.path=path;this.writes=Promise.resolve();this.profiles={};this.selected={};for(const service of Object.keys(protocolDefaults)){const id=`${service}-legacy`;const seed=initial[service]||(service==='minimax'?{baseUrl:'https://api.minimax.cn',model:'speech-2.8-hd',apiKey:''}:{baseUrl:'',model:'',apiKey:''});this.profiles[id]={...seed,id,name:providerCatalog[service][0].label,service,protocol:protocolDefaults[service],timeoutMs:120000};this.profiles[id].models=providerModels(this.profiles[id]);this.selected[service]=id;}}
+ async init(){try{const saved=JSON.parse(await readFile(this.path,'utf8'));if(!saved.profiles||!saved.selected)throw Error('厂商配置文件不完整');this.profiles={...this.profiles,...saved.profiles};this.selected={...this.selected,...saved.selected};for(const profile of Object.values(this.profiles))profile.models=providerModels(profile);}catch(e){if(e.code!=='ENOENT')throw e;}}
  active(service){return this.profiles[this.selected[service]];}
  config(){return Object.fromEntries(Object.keys(protocolDefaults).map(s=>[s,this.active(s)]));}
  byId(id){const p=this.profiles[id];if(!p)throw Error('原任务的厂商配置已不存在');return p;}

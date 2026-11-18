@@ -106,14 +106,9 @@ export async function createApplication({ root = join(applicationRoot, 'data', '
         if (url.pathname === '/api/bootstrap' && request.method === 'GET') return send(response, 200, { token, settings: settings(), providerProfiles:providers.view(), updates:updates.view(), concurrency: workflow.concurrency(), prompts: prompts.view(), projects: store.list(), capabilities, videoProfile: workflow.videoProfile(), voice: voiceStore.view(Boolean(config.minimax.apiKey)), rules: { characterSheet: characterSheetSystemPrompt() } });
         if (url.pathname === '/api/voice' && request.method === 'GET') return send(response, 200, voiceStore.view(Boolean(config.minimax.apiKey)));
         if (url.pathname === '/api/voice/settings' && request.method === 'POST') {
-          const input = await body(request); if (input.apiKey !== undefined && String(input.apiKey).trim()) config.minimax.apiKey = String(input.apiKey).trim();
-          if (input.baseUrl !== undefined) config.minimax.baseUrl = String(input.baseUrl).trim() || 'https://api.minimax.cn';
-          if (input.model !== undefined) config.minimax.model = String(input.model).trim() || 'speech-2.8-hd';
+          const input = await body(request);
           await voiceStore.saveSettings(input);
-          const envPath = join(applicationRoot, '.env'); let env = ''; try { env = await readFile(envPath, 'utf8'); } catch (e) { if (e.code !== 'ENOENT') throw e; }
-          const values = { MINIMAX_BASE_URL: config.minimax.baseUrl, MINIMAX_TTS_MODEL: config.minimax.model, ...(config.minimax.apiKey ? { MINIMAX_API_KEY: config.minimax.apiKey } : {}) };
-          for (const [key, value] of Object.entries(values)) { const line = `${key}=${String(value).replace(/\\/g,'\\\\').replace(/\n/g,'')}`; const re = new RegExp(`^${key}=.*$`, 'm'); env = re.test(env) ? env.replace(re, line) : `${env.trimEnd()}\n${line}\n`; }
-          await writeFile(envPath, env, { mode: 0o600 }); return send(response, 200, voiceStore.view(Boolean(config.minimax.apiKey)));
+          return send(response, 200, voiceStore.view(Boolean(config.minimax?.apiKey)));
         }
         if (url.pathname === '/api/voice/presets' && request.method === 'POST') return send(response, 200, await voiceStore.saveVoice(await body(request)));
         if (url.pathname.startsWith('/api/voice/history/') && request.method === 'DELETE') {
@@ -121,7 +116,9 @@ export async function createApplication({ root = join(applicationRoot, 'data', '
         }
         if (url.pathname === '/api/voice/synthesize' && request.method === 'POST') {
           const input = await body(request); const text = String(input.text || '').trim(); if (!text) throw new Error('请输入要合成的文字'); if (text.length > 9999) throw new Error('单次语音文字不能超过9999字');
-          const merged = { ...voiceStore.data, ...input }; const result = await new MiniMaxTTSProvider(config.minimax).synthesize({ text, model: merged.model, voiceId: merged.voiceId, speed: merged.speed, vol: merged.vol, pitch: merged.pitch, emotion: merged.emotion, format: 'mp3', languageBoost: merged.languageBoost, pronunciation: merged.pronunciation });
+          if (!config.minimax?.apiKey) throw new Error('请先在左侧「接口设置 → 接口配置 → 语音合成」中配置 MiniMax API Key');
+          const merged = { ...voiceStore.data, ...input };
+          const result = await new MiniMaxTTSProvider(config.minimax).synthesize({ text, model: input.model || config.minimax.model || merged.model, voiceId: merged.voiceId, speed: merged.speed, vol: merged.vol, pitch: merged.pitch, emotion: merged.emotion, format: 'mp3', languageBoost: merged.languageBoost, pronunciation: merged.pronunciation });
           const file = await voiceStore.saveAudio(result.bytes, result.format); const history = { id: randomBytes(8).toString('hex'), file, url: `/voice-media/${file}`, name: String(input.name || '').trim().slice(0, 80) || text.slice(0, 32), text: text.slice(0, 120), model: result.model, voiceId: result.voiceId, characterAssetId: '', createdAt: new Date().toISOString(), durationMs: result.meta.audio_length || 0 }; await voiceStore.addHistory(history); return send(response, 200, { ...history, bytes: result.bytes.length });
         }
         if (segments[1] === 'studio') {
@@ -205,6 +202,7 @@ export async function createApplication({ root = join(applicationRoot, 'data', '
           if(busy())throw new Error('有任务运行中，请完成后再切换厂商，避免原任务连接改变');
           const input=await body(request);
           Object.assign(config,await providers.save(input));
+          if(input.minimax&&config.minimax?.model)await voiceStore.saveSettings({model:config.minimax.model});
           capabilities=null;return send(response,200,settings());
         }
         if(url.pathname==='/api/updates'&&request.method==='GET')return send(response,200,updates.view());
