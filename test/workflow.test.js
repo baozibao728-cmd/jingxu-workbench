@@ -110,12 +110,16 @@ test('全新电脑没有.env时已有可用模型预设，只需填写各自Key'
   assert.equal(fresh.fydmai.apiKey, '');
 });
 
-test('项目的演员与道具清单不会再次污染空景生图输入', () => {
+test('项目的演员与道具清单不会再次污染空景生图输入，默认直接透传用户生图提示词且仅开启三视图开关时附加三视图模板', () => {
   const prompt = buildAssetImagePrompt({kind:'scene',prompt:'Empty warm study with wooden desk.'}, '写实电影');
-  assert.match(prompt, /ZERO people/);
+  assert.match(prompt, /^Empty warm study with wooden desk\./);
+  assert.ok(!prompt.includes('ZERO people'));
   assert.ok(!prompt.includes('女信使'));
   const character = buildAssetImagePrompt({kind:'character',prompt:'Woman in a blue jacket.'}, '写实电影');
-  assert.match(character, /单张16:9横版/); assert.match(character, /面部特写/); assert.match(character, /90°侧面/);
+  assert.match(character, /^Woman in a blue jacket\./);
+  assert.ok(!character.includes('单张16:9横版'));
+  const sheet = buildAssetImagePrompt({kind:'character',prompt:'Woman in a blue jacket.'}, '写实电影', { characterSheet: true });
+  assert.match(sheet, /单张16:9横版/); assert.match(sheet, /面部特写/); assert.match(sheet, /90°侧面/);
   const pencil = buildAssetImagePrompt({kind:'character',prompt:'Woman in a blue jacket.'}, '写实电影', { characterPencil: true });
   assert.match(pencil, /彩铅人物开关：已开启/); assert.match(pencil, /彩色铅笔手绘/);
   assert.ok(!character.includes('彩铅人物开关：已开启'));
@@ -199,14 +203,18 @@ test('删除项目会移除本地记录，处理中项目会被保护', async ()
   } finally { await f.cleanup(); }
 });
 
-test('人物一张请求同时包含脸部与三视图，旧竖版资产重做也固定为16:9', async () => {
+test('人物默认按项目画幅直出提示词，开启人物三视图开关后才固定为16:9面部与三视图', async () => {
   const f = await fixture();
   try {
     f.project.aspectRatio = '9:16';
     f.project.characterPencil = true;
     await f.prepare(); const asset = f.project.assets.find(item => item.kind === 'character');
-    assert.equal(asset.aspectRatio, '16:9');
+    assert.equal(asset.aspectRatio, '9:16');
     assert.equal(f.project.assets.find(item => item.kind === 'scene').aspectRatio, '9:16');
+    assert.ok(!f.imageRequests.find(req => req.prompt.includes('Adult woman blue jacket')).prompt.includes('最左侧约30%'));
+
+    // 开启人物三视图开关后，重做自动切回 16:9 并附带三视图模板
+    await f.workflow.updateProject(f.project.id, { characterSheet: true });
     asset.aspectRatio = '2:3';
     const count = f.imageRequests.length;
     await f.workflow.regenerateAsset(f.project.id, asset.id);
@@ -432,7 +440,7 @@ test('商品独立归类（product），自动识别 G1商品 命名且支持手
     assert.equal(saved.assets.find(a => a.name === '青花瓷碗').kind, 'prop');
     assert.equal(saved.assets.find(a => a.name === 'G1商品·山药玉米羹').kind, 'product');
     assert.equal(saved.assets.find(a => a.name === '真丝旗袍').kind, 'product');
-    assert.match(buildAssetImagePrompt(saved.assets.find(a => a.kind === 'product')), /commercial product reference/);
+    assert.equal(buildAssetImagePrompt(saved.assets.find(a => a.kind === 'product')), 'Product jar on white background');
 
     // 手动改回道具后迁移不会强行改回商品
     const bowl = saved.assets.find(a => a.name === '青花瓷碗');
@@ -461,5 +469,71 @@ test('商品独立归类（product），自动识别 G1商品 命名且支持手
     const rebound = await workflow.bindCharacterVoice(project.id, hero.id, 'manual-1');
     assert.equal(rebound.characterAudioItems[0].audio.id, 'manual-1');
     assert.deepEqual(rebound.shots[0].audioIds, ['manual-1']);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('第一步提取不掺杂模块六分镜长提示词，支持不出图商品/文字交接透传给模块六，并放开分镜区间内自由时长', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'drama-six-module-'));
+  const store = new ProjectStore(root); await store.init();
+  const textCalls = [];
+  const workflow = new Workflow(store, () => ({ ...config(), fydmai: { ...config().fydmai, model: 'c7-wan3' } }), {
+    intervalMs: 1,
+    getPrompts: () => ({
+      common: 'COMMON_RULE_MARKER',
+      scenes: 'SCENE_RULE_MARKER',
+      characters: 'CHAR_RULE_MARKER',
+      props: 'PROP_RULE_MARKER',
+      products: 'PRODUCT_RULE_MARKER',
+      characterVariants: 'VARIANT_RULE_MARKER',
+      breakdown: 'BREAKDOWN_MODULE_SIX_ONLY_MARKER',
+      storyboardFormat: '',
+    }),
+    factories: {
+      text: () => ({
+        generateJson: async ({ instructions, input }) => {
+          textCalls.push({ instructions, input: JSON.parse(input) });
+          const data = JSON.parse(input);
+          if (data.chunk) {
+            return {
+              assets: [
+                { key: 'hero', kind: 'character', name: 'R1人物·林晚意', aspectRatio: '9:16', description: '主角', prompt: '真实摄影写实中国年轻女性' },
+                { key: 'prod1', kind: 'product', name: 'G1商品·山药羹', noImage: true, description: '嵌入写法：@G1商品·山药羹｜500g罐装', prompt: '' },
+              ],
+            };
+          }
+          return {
+            shots: [{ title: '开场试吃', duration: 22, promptTemplate: '{{ref:hero}} 拿着山药羹试吃并说出对白。' }],
+          };
+        },
+      }),
+    },
+  });
+  try {
+    const project = await store.create({ title: '六模块独立对齐测试', script: '场次一：林晚意在家展示山药羹。', aspectRatio: '9:16', clipDuration: 30, resolution: '720p' });
+    await workflow.startPreparation(project.id);
+    await workflow.active.get(`prepare:${project.id}`);
+
+    // 第一步提取：包含模块一~五 + 公共约定，不包含模块六
+    assert.match(textCalls[0].instructions, /COMMON_RULE_MARKER/);
+    assert.match(textCalls[0].instructions, /SCENE_RULE_MARKER/);
+    assert.match(textCalls[0].instructions, /PRODUCT_RULE_MARKER/);
+    assert.ok(!textCalls[0].instructions.includes('BREAKDOWN_MODULE_SIX_ONLY_MARKER'));
+
+    const saved = store.get(project.id);
+    const hero = saved.assets.find(a => a.kind === 'character');
+    const prod = saved.assets.find(a => a.kind === 'product');
+    assert.equal(hero.aspectRatio, '9:16');
+    assert.equal(hero.selected, true);
+    assert.equal(prod.selected, false);
+    assert.equal(prod.prompt, '');
+
+    // 第二步生成分镜：收到模块六和未出图商品的交接说明，并允许 22 秒自然时长（即使默认设置是 30 秒）
+    saved.chunks.forEach(c => { c.storyboardState = 'idle'; });
+    saved.shots = [];
+    await workflow.generateStoryboards(saved);
+    assert.match(textCalls[1].instructions, /BREAKDOWN_MODULE_SIX_ONLY_MARKER/);
+    assert.equal(textCalls[1].input.textHandoverAssets[0].name, 'G1商品·山药羹');
+    assert.match(textCalls[1].input.textHandoverAssets[0].description, /嵌入写法/);
+    assert.equal(saved.shots[0].duration, 22);
   } finally { await rm(root, { recursive: true, force: true }); }
 });

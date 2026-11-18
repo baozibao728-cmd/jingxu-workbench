@@ -232,7 +232,7 @@ export async function createApplication({ root = join(applicationRoot, 'data', '
             return send(response, 201, workflow.view(await store.create({ title: input.title || `${project.title} · 新版本`, script: project.script,
               style: project.style, aspectRatio: project.aspectRatio, ruleNotes: project.ruleNotes,
               clipDuration, resolution: resolution || workflow.videoProfile().defaultResolution,
-              characterPencil: project.characterPencil === true, autoVoice: project.autoVoice === true, videoProviderId: project.videoProviderId || config.fydmai.id, autoRetryVideo: project.autoRetryVideo === true, skipReview: input.skipReview === true })));
+              characterPencil: project.characterPencil === true, characterSheet: project.characterSheet === true, autoVoice: project.autoVoice === true, videoProviderId: project.videoProviderId || config.fydmai.id, autoRetryVideo: project.autoRetryVideo === true, skipReview: input.skipReview === true })));
           }
           if (segments[3] === 'assets' && segments[4]) {
             const assetId = segments[4];

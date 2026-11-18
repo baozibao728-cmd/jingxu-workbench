@@ -45,6 +45,7 @@ export class ProjectStore {
       style: String(input.style || ''), aspectRatio: input.aspectRatio || '16:9',
       clipDuration: Number(input.clipDuration || 15), resolution: input.resolution || '720p', ruleNotes: String(input.ruleNotes || ''),
       characterPencil: input.characterPencil === true,
+      characterSheet: input.characterSheet === true,
       autoVoice: input.autoVoice === true,
       videoProviderId: String(input.videoProviderId || ''),
       autoRetryVideo: input.autoRetryVideo === true,

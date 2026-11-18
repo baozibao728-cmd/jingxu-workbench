@@ -2,12 +2,12 @@
 export function splitScript(script, maxChars = 5000) {
   const source = String(script || '');
   if (!source.trim()) return [];
-  const headings = [...source.matchAll(/^(?:场景[一二三四五六七八九十百零〇\d]+\s*[:：]|第[一二三四五六七八九十百零〇\d]+[场幕集]\s*[:：]?|INT\.|EXT\.).*$/gm)];
+  const headings = [...source.matchAll(/^(?:【\s*(?:场景[一二三四五六七八九十百零〇\d]+|场次\s*[一二三四五六七八九十百零〇\d]+|第[一二三四五六七八九十百零〇\d]+[场幕集])[^】\r\n]*】|场景[一二三四五六七八九十百零〇\d]+\s*[:：]?|场次\s*[一二三四五六七八九十百零〇\d]+\s*[:：]?|场[一二三四五六七八九十百零〇\d]+\s*[:：]|第[一二三四五六七八九十百零〇\d]+[场幕集]\s*[:：]?|INT\.|EXT\.).*$/gm)];
   const boundaries = [0, ...headings.map(match => match.index).filter(index => index > 0), source.length];
   const pieces = [];
   for (let i = 0; i < boundaries.length - 1; i++) {
     let remainder = source.slice(boundaries[i], boundaries[i + 1]);
-    const heading = remainder.match(/^(?:场景|第|INT\.|EXT\.).*/)?.[0]?.trim();
+    const heading = remainder.match(/^(?:【\s*(?:场景|场次|第)|场景|场次|场|第|INT\.|EXT\.).*/)?.[0]?.trim();
     while (remainder.length) {
       let end = Math.min(maxChars, remainder.length);
       if (end < remainder.length) {
