@@ -8,6 +8,7 @@ export function characterSheetSystemPrompt() {
 const contracts = {
   scene: 'Create an EMPTY ENVIRONMENT reference image only. There must be ZERO people, ZERO characters, ZERO human faces, ZERO human silhouettes and ZERO human body parts anywhere in the image. Show only the architectural space, furniture and lighting described below. Do not stage any story action.',
   prop: 'Create ONE isolated object reference image. A single specified prop centered on a plain white background. No people, no hands, no characters, no narrative scene, no extra objects. Preserve the object shape, material, colour and intended state.',
+  product: 'Create ONE isolated commercial product reference image. A single specified product centered on a plain white background. No people, no hands, no characters, no narrative scene, no extra objects. Preserve the product shape, material, colour, packaging and details cleanly.',
   frame: 'Create one coherent cinematic composition from the supplied references. One continuous frame, no collage, no split screen.',
 };
 
@@ -21,7 +22,13 @@ export function buildAssetImagePrompt(asset, style = '', { characterPencil = fal
   }
   const contract = contracts[asset.kind];
   if (!contract) throw new Error('不支持的资产类型');
-  const refLock = hasReference ? (asset.kind === 'scene' ? '\n\n【同场景变体/反向参考图锁定】保持与参考图同一个建筑空间，墙、门窗、家具、陈设位置和样式完全不变，仅按描述调整光线、状态或拍摄方向。' : '\n\n【同道具状态变体参考图锁定】保持与参考图同一件物品的轮廓、尺寸比例、材质、颜色和结构不变，仅按描述呈现状态变化。') : '';
+  const refLock = hasReference ? (
+    asset.kind === 'scene'
+      ? '\n\n【同场景变体/反向参考图锁定】保持与参考图同一个建筑空间，墙、门窗、家具、陈设位置和样式完全不变，仅按描述调整光线、状态或拍摄方向。'
+      : asset.kind === 'product'
+        ? '\n\n【同商品多角度/细节参考图锁定】保持与参考图同一件商品的外观、包装、材质、配色和文字标识不变，仅按描述展示新角度或细节。'
+        : '\n\n【同道具状态变体参考图锁定】保持与参考图同一件物品的轮廓、尺寸比例、材质、颜色和结构不变，仅按描述呈现状态变化。'
+  ) : '';
   const styleBlock = cleanStyle ? `\n\nVISUAL STYLE: ${cleanStyle}.` : '';
   // 项目规则已在提取阶段落实为这项资产的提示词；不能再把剧本/资产清单混入生图输入。
   return `${contract}\n\nASSET DETAILS:\n${asset.prompt}${refLock}${styleBlock}\n\nMANDATORY COMPOSITION:\n${contract}\nNo watermark, no logo, no added text.`;

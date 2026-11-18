@@ -395,3 +395,71 @@ test('c7-wan3 拦截旧5秒和480p，模型未上架时不提交也不上传', a
     assert.throws(()=>f.workflow.validateSettings({clipDuration:15.5}), /15～30/);
   } finally { await f.cleanup(); }
 });
+
+test('商品独立归类（product），自动识别 G1商品 命名且支持手改，并可按项目生成/绑定角色音频', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'drama-product-audio-'));
+  const store = new ProjectStore(root); await store.init();
+  const voices = [], synthesized = [];
+  const cfg = () => ({ ...config(), minimax: { baseUrl: 'https://api.minimax.cn', apiKey: 'mm-key', model: 'speech-2.8-hd' } });
+  const workflow = new Workflow(store, cfg, {
+    intervalMs: 1,
+    getVoiceAudio: () => voices,
+    synthesizeVoice: async input => {
+      const item = { id: `audio-${synthesized.length + 1}`, url: `/voice-media/v${synthesized.length + 1}.mp3`, file: `v${synthesized.length + 1}.mp3`, path: join(root, `v${synthesized.length + 1}.mp3`), name: input.name, text: input.text, model: input.model, voiceId: input.voiceId, characterAssetId: input.characterAssetId, createdAt: new Date().toISOString() };
+      await writeFile(item.path, 'MP3');
+      voices.unshift(item); synthesized.push(item);
+      return item;
+    },
+    factories: {
+      text: () => ({ generateJson: async () => ({
+        assets: [
+          { key: 'hero', kind: 'character', name: '林晚意', description: '年轻女性', prompt: 'Young Chinese woman' },
+          { key: 'prop1', kind: 'prop', name: '青花瓷碗', description: '道具', prompt: 'Blue and white porcelain bowl' },
+          { key: 'prod1', kind: 'prop', name: 'G1商品·山药玉米羹', description: '在卖商品', prompt: 'Product jar on white background' },
+          { key: 'prod2', kind: 'product', name: '真丝旗袍', description: '主推商品', prompt: 'Silk qipao on white background' },
+        ],
+        shots: [{ title: '开场试吃', duration: 5, assetKeys: ['hero', 'prod1'] }],
+      }) }),
+      image: () => ({ submit: async () => ({ id: 'img', status: 'completed', urls: [] }), getTask: async () => ({ status: 'completed' }) }),
+      video: () => ({ submit: async () => ({ id: 'v', status: 'completed', urls: [] }), getTask: async () => ({ status: 'completed' }) }),
+    },
+  });
+  try {
+    const project = await store.create({ title: '商品与音频测试', script: '林晚意：「这碗山药玉米羹真好喝。」', aspectRatio: '9:16', clipDuration: 5, resolution: '480p' });
+    await workflow.startPreparation(project.id);
+    await workflow.active.get(`prepare:${project.id}`);
+    const saved = store.get(project.id);
+    assert.equal(saved.assets.find(a => a.name === '青花瓷碗').kind, 'prop');
+    assert.equal(saved.assets.find(a => a.name === 'G1商品·山药玉米羹').kind, 'product');
+    assert.equal(saved.assets.find(a => a.name === '真丝旗袍').kind, 'product');
+    assert.match(buildAssetImagePrompt(saved.assets.find(a => a.kind === 'product')), /commercial product reference/);
+
+    // 手动改回道具后迁移不会强行改回商品
+    const bowl = saved.assets.find(a => a.name === '青花瓷碗');
+    await workflow.editAsset(project.id, bowl.id, { kind: 'product' });
+    assert.equal(store.get(project.id).assets.find(a => a.id === bowl.id).kind, 'product');
+    const prod1 = saved.assets.find(a => a.name === 'G1商品·山药玉米羹');
+    await workflow.editAsset(project.id, prod1.id, { kind: 'prop' });
+    assert.equal(workflow.migrateProviderBindings(store.get(project.id)), false);
+    assert.equal(store.get(project.id).assets.find(a => a.id === prod1.id).kind, 'prop');
+
+    // 在资产音频分类中单角色生成音频，自动绑定到出场分镜并体现在 view.characterAudioItems
+    const hero = saved.assets.find(a => a.kind === 'character');
+    const viewBefore = workflow.view(store.get(project.id));
+    assert.equal(viewBefore.characterAudioItems.length, 1);
+    assert.equal(viewBefore.characterAudioItems[0].audio, null);
+    assert.equal(viewBefore.characterAudioItems[0].suggestedVoiceId, 'female-shaonv');
+
+    const res = await workflow.generateSingleCharacterVoice(project.id, hero.id, { voiceId: 'female-yujie', text: '测试台词' });
+    assert.equal(res.audio.voiceId, 'female-yujie');
+    assert.equal(res.project.characterAudioItems[0].audio.id, res.audio.id);
+    assert.deepEqual(res.project.shots[0].audioIds, [res.audio.id]);
+
+    // 支持换用语音库中已有音频并同步更新分镜
+    const manualClip = { id: 'manual-1', url: '/voice-media/m1.mp3', file: 'm1.mp3', path: join(root, 'm1.mp3'), name: '旁白自定义', text: '另一句', model: 'speech-2.8-hd', voiceId: 'female-tianmei', createdAt: new Date().toISOString() };
+    voices.unshift(manualClip);
+    const rebound = await workflow.bindCharacterVoice(project.id, hero.id, 'manual-1');
+    assert.equal(rebound.characterAudioItems[0].audio.id, 'manual-1');
+    assert.deepEqual(rebound.shots[0].audioIds, ['manual-1']);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});

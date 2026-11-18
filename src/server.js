@@ -220,6 +220,7 @@ export async function createApplication({ root = join(applicationRoot, 'data', '
           if (segments.length === 3 && request.method === 'PATCH') return send(response, 200, await workflow.updateProject(id, await body(request)));
           if (segments[3] === 'prepare' && request.method === 'POST') return send(response, 202, await workflow.startPreparation(id));
           if (segments[3] === 'generate-assets' && request.method === 'POST') return send(response, 202, await workflow.startAssetGeneration(id, (await body(request)).assetIds));
+          if (segments[3] === 'generate-voices' && request.method === 'POST') return send(response, 202, await workflow.startVoiceGeneration(id));
           if (segments[3] === 'reparse-storyboards' && request.method === 'POST') return send(response, 202, await workflow.reparseStoryboards(id, await body(request)));
           if (segments[3] === 'merge' && request.method === 'POST') return send(response, 202, await workflow.startMerge(id));
           if (segments[3] === 'align-following' && request.method === 'POST') return send(response,202,await workflow.alignFollowing(id));
@@ -236,6 +237,8 @@ export async function createApplication({ root = join(applicationRoot, 'data', '
           if (segments[3] === 'assets' && segments[4]) {
             const assetId = segments[4];
             if (segments.length === 5 && request.method === 'PATCH') return send(response, 200, await workflow.editAsset(id, assetId, await body(request)));
+            if (segments[5] === 'voice' && request.method === 'POST') return send(response, 200, await workflow.generateSingleCharacterVoice(id, assetId, await body(request)));
+            if (segments[5] === 'voice' && request.method === 'PATCH') return send(response, 200, await workflow.bindCharacterVoice(id, assetId, (await body(request)).audioId));
             if (segments[5] === 'generate' && request.method === 'POST') return send(response, 202, await workflow.regenerateAsset(id, assetId, await body(request)));
             if (segments[5] === 'select-image' && request.method === 'POST') return send(response, 200, await workflow.selectAssetImage(id, assetId, (await body(request)).file));
             if (segments[5] === 'image' && request.method === 'POST') {

@@ -7,7 +7,7 @@ export function attachMentions(input, assets) {
   let matches = [], selected = 0, queryStart = -1;
   function hide() { menu.hidden = true; input.setAttribute('aria-expanded','false'); input.removeAttribute('aria-activedescendant'); }
   function draw() {
-    menu.innerHTML = matches.length ? matches.map((asset,index) => `<button type="button" role="option" id="mention-${index}" data-mention-index="${index}" aria-selected="${index===selected}" class="${index===selected?'active':''}">${asset.image ? `<img src="${escape(asset.image.url)}" alt="">` : '' }<span>${escape(asset.name)}</span><small>${{character:'人物',scene:'场景',prop:'道具',frame:'分镜图'}[asset.kind]||'素材'}</small></button>`).join('') : '<p>没有匹配的素材，继续输入名称或按 Esc 返回</p>';
+    menu.innerHTML = matches.length ? matches.map((asset,index) => `<button type="button" role="option" id="mention-${index}" data-mention-index="${index}" aria-selected="${index===selected}" class="${index===selected?'active':''}">${asset.image ? `<img src="${escape(asset.image.url)}" alt="">` : '' }<span>${escape(asset.name)}</span><small>${{character:'人物',scene:'场景',prop:'道具',product:'商品',frame:'分镜图'}[asset.kind]||'素材'}</small></button>`).join('') : '<p>没有匹配的素材，继续输入名称或按 Esc 返回</p>';
     menu.hidden = false; input.setAttribute('aria-expanded','true');
     const rect=input.getBoundingClientRect(),width=Math.min(460,rect.width,innerWidth-24);
     menu.style.width=`${width}px`;menu.style.left=`${Math.max(12,Math.min(rect.left,innerWidth-width-12))}px`;

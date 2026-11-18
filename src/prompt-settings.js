@@ -29,7 +29,7 @@ export const promptDefinitions = [
   { key: 'storyboardFormat', label: '分镜输出格式（可选覆盖）', fileHint: '单独覆盖输出版式时填写', description: '留空时直接使用模块六里的输出格式（若已包含）；单独填写时支持 {{DURATION}}、{{ASPECT}}、{{FRAME_RULE}} 等占位符。', default: '' },
 ];
 
-export const outputContract = '固定结构：资产为 {assets:[{key,kind,name,referenceKey?,description,prompt}]}，kind 为 character / scene / prop（商品也用 prop，方便拖入实拍商品图替换）；分镜为 {shots:[{title,description,duration,promptTemplate}]}。引用使用 {{ref:资产key}}，程序自动转成 @图片文件名。可直接拖拽或批量选择「00_公共约定 + 01~06 模块」TXT 文件一键填入。';
+export const outputContract = '固定结构：资产为 {assets:[{key,kind,name,referenceKey?,description,prompt}]}，kind 为 character / scene / prop / product（商品请使用 product，方便单独归入商品栏并拖入实拍商品图替换）；分镜为 {shots:[{title,description,duration,promptTemplate}]}。引用使用 {{ref:资产key}}，程序自动转成 @图片文件名。可直接拖拽或批量选择「00_公共约定 + 01~06 模块」TXT 文件一键填入。';
 
 export function resolvePrompts(overrides = {}) {
   return Object.fromEntries(promptDefinitions.map(item => [item.key, String(overrides[item.key] || '').trim() || item.default]));
