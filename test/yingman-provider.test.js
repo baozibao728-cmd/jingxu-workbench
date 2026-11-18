@@ -32,6 +32,10 @@ test('萤漫 OpenAI 兼容视频适配器用 multipart 传图音，完成后从 
     assert.equal(form.get('size'), '1280x720');
     assert.equal(form.getAll('input_reference').length, 1);
     assert.equal(form.getAll('input_audio').length, 1);
+    await provider.submit({ prompt: '竖屏480p', duration: 15, resolution: '480p', aspectRatio: '9:16' });
+    assert.equal(calls[1].options.body.get('size'), '480x854');
+    const caps = await provider.getCapabilities();
+    assert.deepEqual(caps.models[0].resolutions, ['480p', '720p']);
     assert.equal((await provider.getTask('video-1')).status, 'completed');
     await provider.downloadTask('video-1', out);
     assert.equal(await readFile(out, 'utf8'), 'fake-video');

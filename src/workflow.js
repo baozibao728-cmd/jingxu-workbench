@@ -14,8 +14,14 @@ import { TaskPool, validateConcurrency } from './concurrency.js';
 import { createProvider, referenceTag } from './custom-providers.js';
 import { scenetraCapabilities, scenetraAudioTag } from './scenetra.js';
 import { huimiaoCapabilities, huimiaoAudioTag } from './huimiao.js';
-// Scenetra 的时长、清晰度、参考图上限按所选模型查表，其他方案用方案里填的参数。
-const profileCapabilities = config => config.protocol === 'scenetra' ? scenetraCapabilities(config.model) : config.protocol === 'huimiao' ? huimiaoCapabilities(config) : config.capabilities;
+// 萤漫只支持 480p 与 720p（即使旧配置文件只存了 720p，也自动补齐 480p）；Scenetra/惠喵按各自模型查表。
+const yingmanCapabilities = config => {
+  const base = config.capabilities || {};
+  const list = Array.isArray(base.resolutions) && base.resolutions.length ? base.resolutions : ['480p', '720p'];
+  const resolutions = list.includes('480p') ? list : ['480p', ...list];
+  return { minDuration: 4, maxDuration: 30, defaultDuration: 30, defaultResolution: '720p', maxReference: 10, ...base, resolutions };
+};
+const profileCapabilities = config => config.protocol === 'scenetra' ? scenetraCapabilities(config.model) : config.protocol === 'huimiao' ? huimiaoCapabilities(config) : config.protocol === 'openai-video' ? yingmanCapabilities(config) : config.capabilities;
 import { dialogueLines } from './continuity.js';
 import { startStoryboardReparse, reparseSummary } from './storyboard-reparse.js';
 
@@ -78,12 +84,21 @@ export class Workflow {
     const model = project?.videoModel;
     return model && model !== config.model && array(config.models).some(item => item?.id === model) ? { ...config, model } : config;
   }
-  videoProfile(project) { const config=this.videoConfigForProject(project); const current=this.config().fydmai; const capabilities=['json','openai-video','scenetra','huimiao'].includes(config.protocol)?{models:[{kind:'video',model:config.model,...profileCapabilities(config)}]}:(config.id===current.id ? this.getCapabilities() : null); return videoProfile(config.model, capabilities); }
+  videoProfileFromConfig(config) {
+    const current = this.config().fydmai;
+    const capabilities = ['json', 'openai-video', 'scenetra', 'huimiao'].includes(config.protocol)
+      ? { models: [{ kind: 'video', model: config.model, ...profileCapabilities(config) }] }
+      : (config.id === current?.id ? this.getCapabilities() : null);
+    return videoProfile(config.model, capabilities);
+  }
+  videoProfile(project) { return this.videoProfileFromConfig(this.videoConfigForProject(project)); }
   videoChannels() {
     // 每个已配置的视频方案按它的模型列表展开：一个方案填了几个模型，这里就有几项可选。
-    const configured = (this.getProviderProfiles()?.profiles || []).filter(profile => profile.service === 'fydmai' && profile.configured && !profile.archived).flatMap(profile => {
+    const rawProfiles = (this.getProviderProfiles()?.profiles || []).filter(profile => profile.service === 'fydmai' && profile.configured && !profile.archived);
+    const configured = rawProfiles.flatMap(profile => {
       const models = array(profile.models).filter(item => item?.id), list = models.some(item => item.id === profile.model) ? models : [{ id: profile.model, label: profile.model }, ...models];
-      return list.map(item => ({ id: profile.id, name: profile.name, model: item.id, modelLabel: item.label && item.label !== item.id ? item.label : '', baseUrl: profile.baseUrl, value: `${profile.id}::${item.id}` }));
+      return list.map(item => ({ id: profile.id, name: profile.name, model: item.id, modelLabel: item.label && item.label !== item.id ? item.label : '', baseUrl: profile.baseUrl, value: `${profile.id}::${item.id}`,
+        videoProfile: profile.protocol ? this.videoProfileFromConfig({ ...profile, model: item.id }) : this.videoProfile({ videoProviderId: profile.id, videoModel: item.id }) }));
     });
     if (configured.length || !this.config().fydmai?.id) {
       const counts = new Map();
@@ -100,7 +115,7 @@ export class Workflow {
       });
     }
     const current = this.config().fydmai;
-    return current.apiKey ? [{ id: current.id, value: `${current.id}::${current.model}`, name: current.name || '当前视频渠道', model: current.model, baseUrl: current.baseUrl, label: `${current.name || '当前视频渠道'} · ${current.model}` }] : [];
+    return current.apiKey ? [{ id: current.id, value: `${current.id}::${current.model}`, name: current.name || '当前视频渠道', model: current.model, baseUrl: current.baseUrl, label: `${current.name || '当前视频渠道'} · ${current.model}`, videoProfile: this.videoProfileFromConfig(current) }] : [];
   }
   // 已确认的任务按快照里记下的模型提交和查询，不受之后改选的影响。
   videoConfig(snapshot) {

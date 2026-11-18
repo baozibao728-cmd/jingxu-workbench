@@ -154,6 +154,9 @@ test('一个视频厂商方案的每个模型都能在项目里单独选，提�
     f.workflow.getProviderById = id => id === 'video-alt' ? alt : current;
     const channels = f.workflow.videoChannels();
     assert.deepEqual(channels.map(c => c.value), ['video-alt::seedance-2.5-cc', 'video-alt::seedance-2.5-flash-cc']);
+    assert.deepEqual(channels[0].videoProfile.resolutions, ['480p', '720p']);
+    await f.workflow.updateProject(f.project.id, { videoProviderId: 'video-alt', videoModel: 'seedance-2.5-flash-cc', clipDuration: 15, resolution: '480p' });
+    assert.equal(f.workflow.view(f.project).resolution, '480p');
     assert.match(channels[1].label, /Seedance 2.5 Flash/);
     await assert.rejects(f.workflow.updateProject(f.project.id, { videoProviderId: 'video-alt', videoModel: 'not-listed' }), /模型列表/);
     await f.workflow.updateProject(f.project.id, { videoProviderId: 'video-alt', videoModel: 'seedance-2.5-flash-cc', clipDuration: 15, resolution: '720p' });

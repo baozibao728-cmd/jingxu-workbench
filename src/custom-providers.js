@@ -56,12 +56,18 @@ class YingmanVideoProvider {
  constructor(config){this.config=config;this.api=new ApiClient(config);}
  async uploadImage(path){return{assetId:path,filename:basename(path)};}
  async uploadAudio(path){return{assetId:path,filename:basename(path)};}
- async submit({prompt,duration,resolution,referenceImages=[],referenceAudios=[]}){
+ async submit({prompt,duration,resolution,aspectRatio,referenceImages=[],referenceAudios=[]}){
   const form=new FormData();
   form.append('model',this.config.model);
   form.append('prompt',prompt);
   form.append('seconds',String(duration));
-  const size={ '720p':'1280x720','1080p':'1920x1080','16:9':'1280x720','9:16':'720x1280' }[resolution]||resolution||'1280x720';
+  const sizes={
+   '480p':{'16:9':'854x480','9:16':'480x854','1:1':'480x480',default:'854x480'},
+   '720p':{'16:9':'1280x720','9:16':'720x1280','1:1':'720x720',default:'1280x720'},
+   '1080p':{'16:9':'1920x1080','9:16':'1080x1920','1:1':'1080x1080',default:'1920x1080'},
+  };
+  const table=sizes[resolution];
+  const size=table?(table[aspectRatio]||table.default):({'16:9':'1280x720','9:16':'720x1280','1:1':'720x720'}[aspectRatio||resolution]||resolution||'1280x720');
   form.append('size',size);
   for(const item of referenceImages){const path=item?.assetId;if(typeof path!=='string'||!path)throw Error('萤漫参考图路径无效');const bytes=await readFile(path);form.append('input_reference',new Blob([bytes],{type:this.mime(path,'image')}),basename(path));}
   for(const item of referenceAudios){const path=item?.assetId;if(typeof path!=='string'||!path)throw Error('萤漫参考音频路径无效');const bytes=await readFile(path);form.append('input_audio',new Blob([bytes],{type:this.mime(path,'audio')}),basename(path));}
@@ -69,7 +75,7 @@ class YingmanVideoProvider {
  }
  mime(path,kind){const lower=path.toLowerCase();if(kind==='audio')return lower.endsWith('.wav')?'audio/wav':lower.endsWith('.m4a')?'audio/mp4':'audio/mpeg';return lower.endsWith('.jpg')||lower.endsWith('.jpeg')?'image/jpeg':lower.endsWith('.webp')?'image/webp':'image/png';}
  async getTask(id){return yingmanTask(await this.api.request(`/v1/videos/${encodeURIComponent(id)}`));}
- async getCapabilities(){return{models:[{kind:'video',model:this.config.model,minDuration:4,maxDuration:30,defaultDuration:30,resolutions:['720p'],defaultResolution:'720p',maxReference:10}]};}
+ async getCapabilities(){return{models:[{kind:'video',model:this.config.model,minDuration:4,maxDuration:30,defaultDuration:30,resolutions:['480p','720p'],defaultResolution:'720p',maxReference:10}]};}
  async downloadTask(id,destination){
   const url=new URL(`/v1/videos/${encodeURIComponent(id)}/content`,this.config.baseUrl);
   // 文档示例用 curl -L：content 接口可能跳转到存储地址。跳转时只跟一次，且不把 Key 带到别的域名。
