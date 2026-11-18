@@ -253,6 +253,7 @@ export async function createApplication({ root = join(applicationRoot, 'data', '
           if (segments[3] === 'shots' && segments[4]) {
             if (segments.length === 5 && request.method === 'PATCH') return send(response, 200, await workflow.editShot(id, segments[4], await body(request)));
             if (segments[5] === 'resume' && request.method === 'POST') return send(response, 202, await workflow.resumeVideo(id, segments[4]));
+            if (segments[5] === 'acknowledge-unknown' && request.method === 'POST') return send(response, 200, await workflow.acknowledgeUnknownShot(id, segments[4]));
             if (segments[5] === 'rebuild' && request.method === 'POST') return send(response, 202, await workflow.rebuildShot(id, segments[4], await body(request)));
             if (segments[5] === 'confirm-continuity' && request.method === 'POST') return send(response,200,await workflow.acceptContinuity(id,segments[4]));
           }

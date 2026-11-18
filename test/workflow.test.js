@@ -279,6 +279,10 @@ test('视频提交结果未知或在提交时重启，不会自动再发一次',
     assert.equal(shot.job.state, 'unknown');
     assert.equal(f.submissions.length, 0);
     assert.throws(() => f.workflow.review(f.project.id, [shot.id]), /结果未知/);
+    await assert.rejects(() => f.workflow.rebuildShot(f.project.id, shot.id), /结果未知/);
+    await f.workflow.acknowledgeUnknownShot(f.project.id, shot.id);
+    assert.equal(shot.job.state, 'idle');
+    assert.equal(f.workflow.review(f.project.id, [shot.id]).shots.length, 1);
   } finally { await f.cleanup(); }
 });
 

@@ -1241,6 +1241,16 @@ ${rules.common ? `【公共约定】\n${rules.common}\n` : ''}【分镜拆解规
     if (this.active.has(`video:${id}:${shotId}`)) fail('任务正在查询中', 409);
     shot.job.state = 'pending'; await this.store.save(project); this.queueVideo(project, shot); return this.view(project);
   }
+  async acknowledgeUnknownShot(id, shotId) {
+    const project = this.store.get(id), shot = this.shot(project, shotId);
+    if (jobActive(shot.job) || jobActive(shot.rebuildJob)) fail('这条分镜正在处理中，请完成后再操作', 409);
+    if (shot.job?.state !== 'unknown') fail('这条分镜当前不是“待核对”状态');
+    shot.job = { state: 'idle' };
+    project.revision++;
+    this.store.log(project, `${shot.title} 已人工核对服务端状态，清除“待核对”标记，可重新编辑或提交视频。`, 'info', shot.id);
+    await this.store.save(project);
+    return this.view(project);
+  }
   async startMerge(id) {
     const project = this.store.get(id);
     if (!project.shots.length || project.shots.some(shot => !shot.video || jobActive(shot.job) || shot.continuityReview?.state==='required' || shot.video.inputHash !== this.inputHash(project, shot)) || project.sourceChanged) fail('请先生成所有分镜的当前版本视频');
