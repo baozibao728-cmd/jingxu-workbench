@@ -331,7 +331,7 @@ test('HTTP接口不回传Key，修改请求须来自当前页面，媒体支持�
     const promptRead = await (await fetch(`${base}/api/prompts`)).json();
     assert.equal(promptRead.overrides.characters,'只提取出镜角色');
     assert.equal(promptRead.overrides.scenes,'');
-    assert.equal(promptRead.definitions.length,5);
+    assert.equal(promptRead.definitions.length,8);
     const created = await fetch(`${base}/api/projects`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Workflow-Token': boot.token }, body: JSON.stringify({ title: '网页项目' }) });
     assert.equal(created.status, 201);
     const createdProject=await created.json();

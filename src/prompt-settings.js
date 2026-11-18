@@ -16,17 +16,20 @@ export function renderStoryboardFormat(template, { duration, aspectRatio }) {
   return String(template).replace(/\{\{(DURATION|ASPECT|FRAME_RULE|FRAME_DESCRIPTION|PHONE_ORIENTATION|BLOCKING|VERTICAL_SAFETY)\}\}/g, (_, key) => values[key]);
 }
 
-// 不再内置任何提示词规则：五项默认都是空的，由使用者在“接口设置 → 系统提示词”里自己填写。
-// 没填时只按程序的固定输出字段约束去拆，效果取决于模型自己发挥。
+// 不再内置任何提示词规则：各项默认都是空的，由使用者在“接口设置 → 系统提示词”里自己填写或批量导入。
+// 支持“六模块公共约定 + 模块一～六 + 分镜输出格式覆盖”，也兼容旧版直接填五项。
 export const promptDefinitions = [
-  { key: 'breakdown', label: '分镜拆解', description: '控制剧本如何拆成多个视频片段，适用于整份剧本的每一段。', default: '' },
-  { key: 'characters', label: '角色提取', description: '决定需要定妆的出镜角色、造型与合并规则。', default: '' },
-  { key: 'scenes', label: '场景提取', description: '决定空景、空间锚点及昼夜变体。', default: '' },
-  { key: 'props', label: '道具提取', description: '决定叙事道具、车辆及状态变体。', default: '' },
-  { key: 'storyboardFormat', label: '分镜输出格式要求', description: '每条分镜提示词的版式模板。可用 {{DURATION}}、{{ASPECT}}、{{FRAME_RULE}} 等占位符，时长与画幅跟随项目设置。', default: '' },
+  { key: 'common', label: '公共约定（总纲）', fileHint: '00_六模块公共约定.txt', description: '六个模块共用的核心规则。填写后，程序会在调用各模块时自动拼在最前面，无需重复粘六遍。', default: '' },
+  { key: 'scenes', label: '模块一 · 场景提取', fileHint: '01_模块一_场景提取.txt', description: '决定场景去重、空景布局、文字场景与日夜/状态/反向变体规则。', default: '' },
+  { key: 'characters', label: '模块二 · 角色提取', fileHint: '02_模块二_角色提取.txt', description: '决定谁需要出图定妆、基础形象与造型拆分、人物文字形象及待办清单规则。', default: '' },
+  { key: 'props', label: '模块三 · 道具提取', fileHint: '03_模块三_道具提取.txt', description: '决定哪些叙事道具必须出图及状态版规则（不含在卖商品）。', default: '' },
+  { key: 'products', label: '模块四 · 商品提取', fileHint: '04_模块四_商品.txt', description: '决定剧本里在卖商品的资产名、分镜嵌入写法与商品出场清单。', default: '' },
+  { key: 'characterVariants', label: '模块五 · 角色追加形象', fileHint: '05_模块五_角色追加形象.txt', description: '决定如何拿基础形象图作为参考图生成换装/换造型角色图。', default: '' },
+  { key: 'breakdown', label: '模块六 · 分镜拆解', fileHint: '06_模块六_分镜.txt', description: '控制剧本如何拆段、台词计时、机位连贯性与每段提示词撰写。', default: '' },
+  { key: 'storyboardFormat', label: '分镜输出格式（可选覆盖）', fileHint: '单独覆盖输出版式时填写', description: '留空时直接使用模块六里的输出格式（若已包含）；单独填写时支持 {{DURATION}}、{{ASPECT}}、{{FRAME_RULE}} 等占位符。', default: '' },
 ];
 
-export const outputContract = '固定结构：资产为 {assets:[{key,kind,name,description,prompt}]}，kind 为 character / scene / prop；分镜为 {shots:[{title,description,duration,promptTemplate}]}。引用使用 {{ref:资产key}}，程序自动转成 @图片文件名。自定义规则不改变这些字段，不能引用未选择的素材。人物生图始终为单张16:9面部＋三视图。';
+export const outputContract = '固定结构：资产为 {assets:[{key,kind,name,referenceKey?,description,prompt}]}，kind 为 character / scene / prop（商品也用 prop，方便拖入实拍商品图替换）；分镜为 {shots:[{title,description,duration,promptTemplate}]}。引用使用 {{ref:资产key}}，程序自动转成 @图片文件名。可直接拖拽或批量选择「00_公共约定 + 01~06 模块」TXT 文件一键填入。';
 
 export function resolvePrompts(overrides = {}) {
   return Object.fromEntries(promptDefinitions.map(item => [item.key, String(overrides[item.key] || '').trim() || item.default]));

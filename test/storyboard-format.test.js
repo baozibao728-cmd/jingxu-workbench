@@ -2,12 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,rm,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';import {tmpdir} from 'node:os';
-import {resolvePrompts,renderStoryboardFormat} from '../src/prompt-settings.js';
+import {resolvePrompts,renderStoryboardFormat,promptDefinitions} from '../src/prompt-settings.js';
 import {Workflow} from '../src/workflow.js';import {ProjectStore,digest} from '../src/project-store.js';
 import {detectPromptDuration,videoProfile} from '../src/video-profile.js';
 
 test('不内置任何提示词规则；自己填的分镜模板按时长和画幅替换占位符，素材引用原样保留',()=>{
- const defaults=resolvePrompts();assert.deepEqual(Object.values(defaults),['','','','','']);
+ const defaults=resolvePrompts();assert.deepEqual(Object.values(defaults),Array(promptDefinitions.length).fill(''));
  assert.equal(resolvePrompts({breakdown:'  我的规则  '}).breakdown,'我的规则');
  const template='【时长】{{DURATION}}秒 {{FRAME_DESCRIPTION}}{{VERTICAL_SAFETY}} {{ref:资产key}}';
  const vertical=renderStoryboardFormat(template,{duration:30,aspectRatio:'9:16'});
@@ -142,5 +142,64 @@ test('资产支持按人物/道具/场景修改分类，重新生成多张（抽
   await workflow.selectAssetImage(p.id,'a1',candidateFile);
   assert.equal(p.assets[0].image.file,candidateFile);
   assert.ok(p.assets[0].history.some(item=>item.file===previousActive));
+ }finally{workflow.stopping=true;await Promise.allSettled([...workflow.active.values()]);await rm(root,{recursive:true,force:true});}
+});
+
+test('角色多穿搭/场景变体自动绑定第一张基础图并在生成与抽卡时附带参考图',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'drama-ref-'));const store=new ProjectStore(root);await store.init();
+ const p=await store.create({script:'场一：沈姨在家，随后换礼服出场。',clipDuration:15,aspectRatio:'9:16'});
+ const config=()=>({deepseek:{apiKey:'fake'},grsai:{apiKey:'fake',model:'gpt-image-2'},fydmai:{apiKey:'fake',model:'c7-wan3',baseUrl:'https://video.example'}});
+ const submissions=[];let seq=0;
+ const workflow=new Workflow(store,config,{
+  intervalMs:1,
+  factories:{
+   text:()=>({generateJson:async()=>({
+    assets:[
+     {key:'shen_base',kind:'character',name:'R1人物·沈姨',description:'基础日常穿搭',prompt:'Middle-aged Chinese woman in daily home clothes'},
+     {key:'shen_look2',kind:'character',name:'R1人物·沈姨·造型二',referenceKey:'shen_base',description:'礼服穿搭',prompt:'Same woman wearing navy evening dress'},
+     {key:'shen_look3',kind:'character',name:'R1人物·沈姨·造型三',description:'工装穿搭',prompt:'Same woman wearing work apron'}
+    ],
+    shots:[{title:'镜头一',description:'沈姨出场',duration:15,assetKeys:['shen_base']}]
+   })}),
+   image:()=>({submit:async req=>{
+    const n=++seq;submissions.push(req);
+    return {id:`img-${n}`,status:'completed',urls:[`https://image.example/${n}.png`]};
+   }}),
+  },
+  download:async(url,path)=>writeFile(path,Buffer.from(`fake-png-${url}`)),
+ });
+ try{
+  await workflow.startPreparation(p.id);await workflow.active.get(`prepare:${p.id}`);
+  assert.equal(p.assets.length,3);
+  const [base,look2,look3]=p.assets;
+  assert.equal(base.referenceAssetId,undefined);
+  assert.equal(look2.referenceAssetId,base.id);
+  assert.equal(look3.referenceAssetId,base.id);
+  // 若直接重做造型二但第一张还没出图，应提示先生成第一张
+  await workflow.regenerateAsset(p.id,look2.id,{count:2});
+  await workflow.active.get(`asset:${p.id}:${look2.id}`);
+  assert.equal(look2.job.state,'failed');
+  assert.match(look2.job.error,/请先生成基础参考图/);
+  // 一键全部生成：先波次1生成 base，再波次2自动带 base 图生成 look2 与 look3
+  await workflow.startAssetGeneration(p.id,p.assets.map(a=>a.id));
+  await workflow.active.get(`prepare:${p.id}`);
+  assert.ok(base.image && look2.image && look3.image);
+  assert.equal(submissions.length,3);
+  assert.equal(submissions[0].images.length,0);
+  assert.equal(submissions[1].images.length,1);
+  assert.equal(submissions[2].images.length,1);
+  assert.match(submissions[1].images[0],/^data:image\/png;base64,/);
+  assert.match(submissions[1].prompt,/同角色换装\/追加造型参考图锁定/);
+  // 对造型二进行 2 张抽卡，也自动带上第一张基础图
+  const before=submissions.length;
+  await workflow.regenerateAsset(p.id,look2.id,{count:2});
+  await workflow.active.get(`asset:${p.id}:${look2.id}`);
+  assert.equal(submissions.length,before+2);
+  assert.equal(submissions[before].images.length,1);
+  assert.equal(submissions[before+1].images.length,1);
+  // 编辑参考图：校验防环并支持清空
+  await assert.rejects(()=>workflow.editAsset(p.id,base.id,{referenceAssetId:look2.id}),/互相设为参考图/);
+  await workflow.editAsset(p.id,look3.id,{referenceAssetId:''});
+  assert.equal(look3.referenceAssetId,undefined);
  }finally{workflow.stopping=true;await Promise.allSettled([...workflow.active.values()]);await rm(root,{recursive:true,force:true});}
 });

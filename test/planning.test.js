@@ -10,12 +10,12 @@ import {Workflow} from '../src/workflow.js';
 
 const settings={deepseek:{apiKey:'fake',model:'text'},grsai:{apiKey:'fake',model:'gpt-image-fake'},fydmai:{apiKey:'fake',model:'c7-wan3',baseUrl:'https://video.example'}};
 
-test('五项提示词独立持久化，空白项和恢复默认使用内置规则',async()=>{
+test('系统提示词各项独立持久化，空白项和恢复默认使用内置规则',async()=>{
   const root=await mkdtemp(join(tmpdir(),'drama-prompts-'));
   try{
     const store=new PromptSettings(join(root,'prompts.json'));await store.init();
     const defaults=store.effective();
-    assert.equal(Object.keys(defaults).length,5);
+    assert.equal(Object.keys(defaults).length,8);
     await store.save({characters:'自定义角色规则',scenes:'  '});
     const reload=new PromptSettings(join(root,'prompts.json'));await reload.init();
     assert.equal(reload.effective().characters,'自定义角色规则');
