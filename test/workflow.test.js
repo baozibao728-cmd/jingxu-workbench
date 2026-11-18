@@ -537,3 +537,62 @@ test('第一步提取不掺杂模块六分镜长提示词，支持不出图商�
     assert.equal(saved.shots[0].duration, 22);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+test('拆解先把大剧本拆成带 scriptExcerpt 的小节草稿并精准对应资产，生成各条分镜提示词时只传该小节剧本与本节资产', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'drama-segment-isolate-'));
+  const store = new ProjectStore(root); await store.init();
+  const promptRequests = [];
+  const workflow = new Workflow(store, () => ({ ...config(), fydmai: { ...config().fydmai, model: 'c7-wan3' } }), {
+    intervalMs: 1,
+    factories: {
+      text: () => ({
+        generateJson: async ({ input }) => {
+          const data = JSON.parse(input);
+          if (data.chunk) {
+            return {
+              assets: [
+                { key: 'lin', kind: 'character', name: '林晚意', description: '女主', prompt: 'Young woman' },
+                { key: 'zhao', kind: 'character', name: '赵董', description: '反派', prompt: 'Businessman' },
+                { key: 'room', kind: 'scene', name: '衣帽间', description: '室内', prompt: 'Wardrobe room' },
+                { key: 'prod_soup', kind: 'product', name: 'G1商品·玉米羹', noImage: true, description: '嵌入写法：@G1商品·玉米羹', prompt: '' },
+              ],
+              shots: [
+                { title: '镜头1：衣帽间开场', scriptExcerpt: '林晚意站在衣帽间整理旧衣，端起玉米羹。', description: '林晚意整理旧衣', duration: 20, assetKeys: ['lin', 'room', 'prod_soup'] },
+                { title: '镜头2：赵董出场', scriptExcerpt: '赵董推门闯入走廊大喊一声。', description: '赵董闯入', duration: 18, assetKeys: ['zhao'] },
+              ],
+            };
+          }
+          promptRequests.push(data);
+          return {
+            shots: [{ title: data.currentShot.title, duration: data.currentShot.duration, promptTemplate: `{{ref:${data.assets[0].key}}} ${data.scriptSegment}` }],
+          };
+        },
+      }),
+    },
+  });
+  try {
+    const project = await store.create({ title: '小节精准拆传测试', script: '第一场：衣帽间内，林晚意站在衣帽间整理旧衣，端起玉米羹。随后赵董推门闯入走廊大喊一声。', aspectRatio: '9:16', clipDuration: 20, resolution: '720p' });
+    await workflow.startPreparation(project.id);
+    await workflow.active.get(`prepare:${project.id}`);
+
+    const saved = store.get(project.id);
+    assert.equal(saved.shots.length, 2);
+    assert.equal(saved.shots[0].scriptExcerpt, '林晚意站在衣帽间整理旧衣，端起玉米羹。');
+    assert.equal(saved.shots[1].scriptExcerpt, '赵董推门闯入走廊大喊一声。');
+
+    await workflow.generateShotPrompts(project.id, [saved.shots[0].id, saved.shots[1].id]);
+    await workflow.active.get(`shot-prompts:${project.id}`);
+
+    assert.equal(promptRequests.length, 2);
+    // 镜头1 只传了第1小节原文、lin+room 资产和关联的 prod_soup 交接说明，没有传赵董与整场大文本
+    assert.equal(promptRequests[0].scriptSegment, '林晚意站在衣帽间整理旧衣，端起玉米羹。');
+    assert.equal(promptRequests[0].sourceScene, undefined);
+    assert.deepEqual(promptRequests[0].assets.map(a => a.name), ['林晚意', '衣帽间']);
+    assert.deepEqual(promptRequests[0].textHandoverAssets.map(a => a.name), ['G1商品·玉米羹']);
+
+    // 镜头2 只传了第2小节原文与赵董，没有传林晚意/衣帽间/玉米羹
+    assert.equal(promptRequests[1].scriptSegment, '赵董推门闯入走廊大喊一声。');
+    assert.deepEqual(promptRequests[1].assets.map(a => a.name), ['赵董']);
+    assert.equal(promptRequests[1].textHandoverAssets, undefined);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
