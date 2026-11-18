@@ -22,7 +22,7 @@ test('五项提示词独立持久化，空白项和恢复默认使用内置规�
     assert.equal(reload.effective().scenes,defaults.scenes);
     await reload.save({characters:''});
     assert.deepEqual(reload.effective(),defaults);
-    await assert.rejects(reload.save({props:'a'.repeat(20001)}),/2万字/);
+    await assert.rejects(reload.save({props:'a'.repeat(200001)}),/20万字/);
     assert.deepEqual(reload.effective(),defaults);
   }finally{await rm(root,{recursive:true,force:true});}
 });

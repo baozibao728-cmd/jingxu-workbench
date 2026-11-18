@@ -239,6 +239,7 @@ export async function createApplication({ root = join(applicationRoot, 'data', '
             const assetId = segments[4];
             if (segments.length === 5 && request.method === 'PATCH') return send(response, 200, await workflow.editAsset(id, assetId, await body(request)));
             if (segments[5] === 'generate' && request.method === 'POST') return send(response, 202, await workflow.regenerateAsset(id, assetId, await body(request)));
+            if (segments[5] === 'select-image' && request.method === 'POST') return send(response, 200, await workflow.selectAssetImage(id, assetId, (await body(request)).file));
             if (segments[5] === 'image' && request.method === 'POST') {
               const input = await body(request); const bytes = Buffer.from(String(input.base64 || ''), 'base64');
               const png = bytes.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]));
@@ -248,6 +249,7 @@ export async function createApplication({ root = join(applicationRoot, 'data', '
               return send(response, 200, await workflow.replaceAsset(id, assetId, bytes, png ? 'png' : jpeg ? 'jpg' : 'webp'));
             }
           }
+          if (segments[3] === 'shots' && segments[4] === 'generate-prompts' && request.method === 'POST') return send(response, 202, await workflow.generateShotPrompts(id, (await body(request)).shotIds));
           if (segments[3] === 'shots' && segments[4]) {
             if (segments.length === 5 && request.method === 'PATCH') return send(response, 200, await workflow.editShot(id, segments[4], await body(request)));
             if (segments[5] === 'resume' && request.method === 'POST') return send(response, 202, await workflow.resumeVideo(id, segments[4]));

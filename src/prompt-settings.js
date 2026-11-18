@@ -44,7 +44,7 @@ export class PromptSettings {
     const next = {};
     for (const item of promptDefinitions) {
       const value = input[item.key] ?? this.overrides[item.key] ?? '';
-      if (typeof value !== 'string' || value.length > 20000) throw new Error('每项系统提示词最多2万字');
+      if (typeof value !== 'string' || value.length > 200000) throw new Error('每项系统提示词最多20万字');
       next[item.key] = value.trim();
     }
     const write = this.writes.catch(() => {}).then(async () => {

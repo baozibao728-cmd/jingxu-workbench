@@ -94,14 +94,16 @@ export function parsePrompt(text, assets) {
     const at = source.indexOf('@', cursor);
     if (at < 0) { result += source.slice(cursor); break; }
     result += source.slice(cursor, at);
+    let afterAt = at + 1;
+    while (source[afterAt] === ' ' || source[afterAt] === '\t') afterAt++;
     const asset = byLength.find(item => {
-      if (!source.startsWith(item.name, at + 1)) return false;
-      const next = source[at + 1 + item.name.length];
-      return !next || /[\s@，。！？；：,!?;:()（）]/.test(next);
+      if (!source.startsWith(item.name, afterAt)) return false;
+      const next = source[afterAt + item.name.length];
+      return !next || /[\s@，。！？；：,!?;:()（）|｜、】\]}>]/.test(next);
     });
-    if (!asset) throw new Error(`引用“${source.slice(at + 1).split(/[\s@，。！？；：,!?;:]/)[0]}”不存在，请从素材按钮插入`);
+    if (!asset) throw new Error(`引用“${source.slice(afterAt).split(/[\s@，。！？；：,!?;:|｜、】\]}>]/)[0]}”不存在，请从素材按钮插入`);
     result += `{{ref:${asset.id}}}`;
-    cursor = at + 1 + asset.name.length;
+    cursor = afterAt + asset.name.length;
   }
   const referenced = [...result.matchAll(/\{\{ref:([^}]+)\}\}/g)].map(match => match[1]);
   if (referenced.some(id => !assets.some(asset => asset.id === id))) throw new Error('提示词引用了已移除的素材');

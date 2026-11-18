@@ -338,12 +338,12 @@ html[data-sidebar=collapsed] .theme-switch button{flex:0 0 26px;width:26px;heigh
 .provider-test-result.fail{background:var(--red-soft);color:var(--red)}
 .prepare-help .text-button{margin-left:8px}
 
-/* 未生成图片的资产卡片整张可点选 */
-.asset-card.is-pickable{cursor:pointer}
-.asset-card.is-pickable:has([data-asset-select]:checked){border-color:var(--accent-line);box-shadow:0 0 0 1.5px var(--accent-line),0 10px 26px -22px rgba(32,40,48,.35)}
-.asset-card.is-pickable:has([data-asset-select]:not(:checked)) .asset-visual{opacity:.55}
-.asset-card.is-pickable .asset-tools{opacity:.35}
-.asset-card.is-pickable *{cursor:pointer}
+/* 未生成图片的资产卡片与分镜卡片整张可点选 */
+.asset-card.is-pickable,.shot-card.is-pickable{cursor:pointer}
+.asset-card.is-pickable:has([data-asset-select]:checked),.shot-card.is-pickable:has([data-shot-select]:checked){border-color:var(--accent-line);box-shadow:0 0 0 1.5px var(--accent-line),0 10px 26px -22px rgba(32,40,48,.35)}
+.asset-card.is-pickable:has([data-asset-select]:not(:checked)) .asset-visual,.shot-card.is-pickable:has([data-shot-select]:not(:checked)) .shot-preview{opacity:.55}
+.asset-card.is-pickable .asset-tools,.shot-card.is-pickable .shot-actions{opacity:.35}
+.asset-card.is-pickable *,.shot-card.is-pickable *{cursor:pointer}
 .asset-pick-toggle.active,.asset-pick-toggle.active:hover:not(:disabled){background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent-ink)}
 .asset-choice input{width:18px;height:18px}
 
@@ -736,3 +736,25 @@ html[data-theme=dark] .cv{--cv-bg:#191919;--cv-dot:rgba(255,255,255,.055);--cv-n
 :root{--title-shine:#9ccfff}
 html[data-theme=light]{--title-shine:#d9772f}
 @media(prefers-reduced-motion:reduce){.studio-title em.shine{animation:none}}
+
+/* 资产分类分组（人物、道具、场景）与多张抽卡候选图 */
+.asset-category-group{margin-bottom:24px}
+.asset-category-header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 4px 10px;border-bottom:1px solid var(--line);margin-bottom:14px}
+.asset-category-header h3{font-size:15px;font-weight:600;margin:0}
+.asset-category-header label{display:flex;align-items:center;gap:6px;cursor:pointer}
+.asset-candidates-strip{display:flex;align-items:center;gap:6px;margin-top:9px;flex-wrap:wrap}
+.candidate-thumb{width:34px;height:34px;padding:0;border-radius:7px;overflow:hidden;border:1.5px solid var(--line);background:var(--sunk);opacity:.72;transition:opacity .18s,border-color .18s,transform .18s}
+.candidate-thumb:hover:not(:disabled){opacity:1;transform:translateY(-1px)}
+.candidate-thumb.active{opacity:1;border-color:var(--accent);box-shadow:0 0 0 1px var(--accent-line)}
+.candidate-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.candidate-more{height:34px;padding:0 8px;font-size:11px;border-radius:7px}
+.draw-cards-control{padding:11px 13px;border-radius:10px;background:var(--sunk);border:1px solid var(--line)}
+.draw-count-presets button.active{background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent-ink)}
+.asset-candidates-modal{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+.asset-candidates-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;margin-top:10px}
+.candidate-card{border:1.5px solid var(--line);border-radius:10px;overflow:hidden;background:var(--sunk);transition:border-color .18s,box-shadow .18s}
+.candidate-card.active{border-color:var(--accent);box-shadow:0 0 0 1.5px var(--accent-line)}
+.candidate-select-btn{width:100%;padding:0;border:0;background:transparent;display:flex;flex-direction:column;align-items:stretch;text-align:center;cursor:pointer}
+.candidate-select-btn img{width:100%;height:92px;object-fit:cover;display:block}
+.candidate-select-btn span{font-size:11px;padding:6px 4px;color:var(--ink-2)}
+.candidate-card.active .candidate-select-btn span{color:var(--accent-ink);font-weight:600}

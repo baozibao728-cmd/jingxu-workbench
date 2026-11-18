@@ -24,7 +24,7 @@ export async function startStoryboardReparse(workflow,id,input={}){
  if(project.shots.some(s=>s.job?.state==='unknown'||(s.job?.taskId&&s.job.state!=='completed'&&!s.video)))throw Error('有视频任务结果未知或尚未接收，请先查询完成再全部重新解析');
  if(!project.script.trim())throw Error('请先填写剧本');
  if(!workflow.config().deepseek.apiKey)throw Error('请先配置文本服务');
- const selected=project.assets.filter(a=>a.selected!==false);if(!selected.length||selected.some(a=>!a.image))throw Error('请先完成选中资产的图片，再重新解析全部分镜');
+ const selected=project.assets.filter(a=>a.selected!==false);if(!selected.length)throw Error('请先勾选至少一项资产，再重新解析全部分镜');
  const hash=sourceHash(project);let record;
  if(input.resume===true){
   record=project.storyboardReparse;
@@ -33,7 +33,7 @@ export async function startStoryboardReparse(workflow,id,input={}){
   record.draft.chunks=normalizeReparseChunks(record.draft.chunks);
  }else{
   const duration=Number(input.duration??project.clipDuration);validateVideoSettings(workflow.videoProfile(),duration,workflow.resolution(project));
-  if(input.notes!==undefined&&(typeof input.notes!=='string'||input.notes.length>6000))throw Error('本次调整要求最多6000字');
+  if(input.notes!==undefined&&(typeof input.notes!=='string'||input.notes.length>100000))throw Error('本次调整要求最多10万字');
   const chunks=normalizeReparseChunks(splitScript(project.script,REPARSE_CHUNK_MAX));
   if(!chunks.some(c=>!c.referenceOnly))throw Error('剧本没有可生成分镜的正文');
   chunks.forEach(c=>c.storyboardState='idle');
