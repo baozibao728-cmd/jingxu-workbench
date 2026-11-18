@@ -8,7 +8,7 @@ import {detectPromptDuration,videoProfile} from '../src/video-profile.js';
 
 test('不内置任何提示词规则；自己填的分镜模板按时长和画幅替换占位符，素材引用原样保留',()=>{
  const defaults=resolvePrompts();assert.deepEqual(Object.values(defaults),Array(promptDefinitions.length).fill(''));
- assert.equal(resolvePrompts({breakdown:'  我的规则  '}).breakdown,'我的规则');
+ assert.equal(resolvePrompts({gem2:'  我的规则  '}).gem2,'我的规则');
  const template='【时长】{{DURATION}}秒 {{FRAME_DESCRIPTION}}{{VERTICAL_SAFETY}} {{ref:资产key}}';
  const vertical=renderStoryboardFormat(template,{duration:30,aspectRatio:'9:16'});
  assert.match(vertical,/【时长】30秒/);assert.match(vertical,/竖屏9:16剧情短剧构图/);assert.match(vertical,/底部五分之一/);
@@ -23,7 +23,7 @@ test('新分镜与AI重拆实际收到自己填写的模板，生成超过9张�
  const root=await mkdtemp(join(tmpdir(),'drama-format-'));const store=new ProjectStore(root);await store.init();
  const p=await store.create({script:'场景一：主角说话。',clipDuration:30,aspectRatio:'9:16'});let tooMany=false;const calls=[];
  const config=()=>({deepseek:{apiKey:'fake'},grsai:{apiKey:'fake'},fydmai:{apiKey:'fake',model:'c7-wan3',baseUrl:'https://video.example'}});
- const workflow=new Workflow(store,config,{getPrompts:()=>resolvePrompts({breakdown:'我的拆解规则',storyboardFormat:'【时长】{{DURATION}}秒 我的版式模板'}),factories:{text:()=>({generateJson:async request=>{calls.push(request);return{shots:[{title:'对白',duration:30,promptTemplate:tooMany?p.assets.map(a=>`{{ref:${a.sourceKey}}}`).join(' '):'{{ref:a0}} 0-30秒说话。'}]};}})}});
+ const workflow=new Workflow(store,config,{getPrompts:()=>resolvePrompts({gem2:'我的拆解规则\n【时长】{{DURATION}}秒 我的版式模板'}),factories:{text:()=>({generateJson:async request=>{calls.push(request);return{shots:[{title:'对白',duration:30,promptTemplate:tooMany?p.assets.map(a=>`{{ref:${a.sourceKey}}}`).join(' '):'{{ref:a0}} 0-30秒说话。'}]};}})}});
  try{
   const bytes=Buffer.from('fake');await writeFile(store.media(p.id,'a.png'),bytes);
   p.assets=Array.from({length:10},(_,i)=>({id:`a${i}`,sourceKey:`a${i}`,kind:i?'prop':'character',name:`素材${i}`,selected:true,image:{file:'a.png',filename:'a.png',sha256:digest(bytes)}}));

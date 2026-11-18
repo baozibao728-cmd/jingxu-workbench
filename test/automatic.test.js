@@ -13,7 +13,7 @@ async function fixture({count=3,onImage,onVideo,available=true}={}){
   let textCalls=0,imageCalls=0;const submissions=[];
   const config={deepseek:{apiKey:'fake',model:'text'},grsai:{apiKey:'fake',model:'gpt-image-fake'},fydmai:{apiKey:'fake',model:'c7-wan3',baseUrl:'https://video.example'}};
   const workflow=new Workflow(store,()=>config,{
-    intervalMs:1,refreshCapabilities:async()=>({models:[{kind:'video',model:'c7-wan3',onShelf:available}]}),
+    intervalMs:1,analysisMaxChars:15,refreshCapabilities:async()=>({models:[{kind:'video',model:'c7-wan3',onShelf:available}]}),
     factories:{
       text:()=>({generateJson:async({input})=>{textCalls++;const data=JSON.parse(input);return data.chunk?{assets:[{key:'hero',name:'主角',kind:'character',prompt:'Adult person'}]}:{shots:[{title:data.chunkTitle,duration:15,promptTemplate:'{{ref:hero}} 拿起信。'}]};}}),
       image:()=>({submit:async()=>{imageCalls++;await onImage?.(project,workflow);return {id:'image-fake',status:'completed',urls:['https://image.example/result.png']};}}),

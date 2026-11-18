@@ -341,12 +341,12 @@ test('HTTP接口不回传Key，修改请求须来自当前页面，媒体支持�
     assert.equal(invalidSettings.status, 400);
     const unchanged = await (await fetch(`${base}/api/bootstrap`)).json();
     assert.equal(unchanged.settings.deepseek.model, 'deepseek-flash');
-    const promptSaved = await fetch(`${base}/api/prompts`, {method:'POST',headers:{'Content-Type':'application/json','X-Workflow-Token':boot.token},body:JSON.stringify({characters:'只提取出镜角色',scenes:''})});
+    const promptSaved = await fetch(`${base}/api/prompts`, {method:'POST',headers:{'Content-Type':'application/json','X-Workflow-Token':boot.token},body:JSON.stringify({gem1:'只提取出镜角色',gem2:''})});
     assert.equal(promptSaved.status,200);
     const promptRead = await (await fetch(`${base}/api/prompts`)).json();
-    assert.equal(promptRead.overrides.characters,'只提取出镜角色');
-    assert.equal(promptRead.overrides.scenes,'');
-    assert.equal(promptRead.definitions.length,8);
+    assert.equal(promptRead.overrides.gem1,'只提取出镜角色');
+    assert.equal(promptRead.overrides.gem2,'');
+    assert.equal(promptRead.definitions.length,2);
     const created = await fetch(`${base}/api/projects`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Workflow-Token': boot.token }, body: JSON.stringify({ title: '网页项目' }) });
     assert.equal(created.status, 201);
     const createdProject=await created.json();
@@ -594,5 +594,63 @@ test('拆解先把大剧本拆成带 scriptExcerpt 的小节草稿并精准对�
     assert.equal(promptRequests[1].scriptSegment, '赵董推门闯入走廊大喊一声。');
     assert.deepEqual(promptRequests[1].assets.map(a => a.name), ['赵董']);
     assert.equal(promptRequests[1].textHandoverAssets, undefined);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('两颗 Gem 模式：默认整本送 Gem1 拆段（不按场景正则提前切碎），Gem1 与 Gem2 隔离且输出截断时自动对半拆重试', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'drama-two-gems-'));
+  const store = new ProjectStore(root); await store.init();
+  const calls = [];
+  let truncatedOnce = false;
+  const workflow = new Workflow(store, () => ({ ...config(), fydmai: { ...config().fydmai, model: 'c7-wan3' } }), {
+    intervalMs: 1,
+    getPrompts: () => ({ gem1: 'GEM1_SPLIT_PROMPT', gem2: 'GEM2_STORYBOARD_PROMPT' }),
+    factories: {
+      text: () => ({
+        generateJson: async ({ instructions, input }) => {
+          const data = JSON.parse(input);
+          calls.push({ instructions, data });
+          if (data.chunk) {
+            if (!truncatedOnce) {
+              truncatedOnce = true;
+              const err = new Error('输出达到上限');
+              err.code = 'TEXT_OUTPUT_TRUNCATED';
+              throw err;
+            }
+            return {
+              assets: [{ key: 'lin', kind: 'character', name: '林晚意', description: '主角', prompt: 'Young woman' }],
+              shots: [{ title: `${data.chunk.title}小段`, scriptExcerpt: data.chunk.script, description: '摘要', duration: 15, assetKeys: ['lin'] }],
+            };
+          }
+          return {
+            shots: [{ title: data.currentShot.title, duration: 15, promptTemplate: `{{ref:${data.assets[0].key}}} ${data.scriptSegment}` }],
+          };
+        },
+      }),
+    },
+  });
+  try {
+    const multiSceneScript = '第一场：客厅\n林晚意：“第一句。”\n\n第二场：厨房\n林晚意：“第二句。”\n' + '剧情动作补充。\n'.repeat(60);
+    const project = await store.create({ title: 'Gem1整本传入与截断对半测试', script: multiSceneScript, aspectRatio: '9:16', clipDuration: 15, resolution: '720p' });
+    await workflow.startPreparation(project.id);
+    await workflow.active.get(`prepare:${project.id}`);
+
+    const saved = store.get(project.id);
+    // 第一次调用时整本作为一个完整 chunk 传给 Gem 1（未提前按“第一场/第二场”切碎）
+    assert.equal(calls[0].data.chunk.total, 1);
+    assert.equal(calls[0].data.chunk.script, multiSceneScript);
+    assert.match(calls[0].instructions, /GEM1_SPLIT_PROMPT/);
+    assert.ok(!calls[0].instructions.includes('GEM2_STORYBOARD_PROMPT'));
+
+    // 遇到 TEXT_OUTPUT_TRUNCATED 自动对半拆成 2 段完成提取
+    assert.equal(saved.preparation.state, 'completed');
+    assert.equal(saved.chunks.length, 2);
+    assert.equal(saved.shots.length, 2);
+
+    await workflow.generateShotPrompts(project.id, [saved.shots[0].id]);
+    await workflow.active.get(`shot-prompts:${project.id}`);
+    const gem2Call = calls.at(-1);
+    assert.match(gem2Call.instructions, /GEM2_STORYBOARD_PROMPT/);
+    assert.ok(!gem2Call.instructions.includes('GEM1_SPLIT_PROMPT'));
   } finally { await rm(root, { recursive: true, force: true }); }
 });

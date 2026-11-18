@@ -21,3 +21,24 @@ export function splitScript(script, maxChars = 5000) {
   }
   return pieces.map((piece, index) => ({ ...piece, id: `chunk-${index + 1}`, index: index + 1, analysisState: 'idle', storyboardState: 'idle' }));
 }
+
+// Gem 1 接收整本剧本或小说，只在超过单次承载上限时才按场次合并切批，避免提前在代码里把小场景拆碎。
+export function batchScript(script, maxChars = 15000) {
+  const source = String(script || '');
+  if (!source.trim()) return [];
+  if (source.length <= maxChars) {
+    return [{ id: 'chunk-1', index: 1, title: '完整剧本 / 小说', text: source, referenceOnly: false, analysisState: 'idle', storyboardState: 'idle' }];
+  }
+  const rawPieces = splitScript(source, maxChars);
+  const packed = [];
+  for (const piece of rawPieces) {
+    const last = packed[packed.length - 1];
+    if (last && !last.referenceOnly && !piece.referenceOnly && last.text.length + piece.text.length <= maxChars) {
+      last.text += piece.text;
+      if (!last.title.includes('～')) last.title = `${last.title} 等`;
+    } else {
+      packed.push({ ...piece });
+    }
+  }
+  return packed.map((piece, index) => ({ ...piece, id: `chunk-${index + 1}`, index: index + 1, analysisState: 'idle', storyboardState: 'idle' }));
+}

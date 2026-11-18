@@ -16,20 +16,13 @@ export function renderStoryboardFormat(template, { duration, aspectRatio }) {
   return String(template).replace(/\{\{(DURATION|ASPECT|FRAME_RULE|FRAME_DESCRIPTION|PHONE_ORIENTATION|BLOCKING|VERTICAL_SAFETY)\}\}/g, (_, key) => values[key]);
 }
 
-// 不再内置任何提示词规则：各项默认都是空的，由使用者在“接口设置 → 系统提示词”里自己填写或批量导入。
-// 支持“六模块公共约定 + 模块一～六 + 分镜输出格式覆盖”，也兼容旧版直接填五项。
+// 不内置任何提示词规则：两个 Gem 默认都是空的，由使用者在“接口设置 → 系统提示词”里自己填写或导入。
 export const promptDefinitions = [
-  { key: 'common', label: '公共约定（总纲）', fileHint: '00_六模块公共约定.txt', description: '六个模块共用的核心规则。填写后，程序会在调用各模块时自动拼在最前面，无需重复粘六遍。', default: '' },
-  { key: 'scenes', label: '模块一 · 场景提取', fileHint: '01_模块一_场景提取.txt', description: '决定场景去重、空景布局、文字场景与日夜/状态/反向变体规则。', default: '' },
-  { key: 'characters', label: '模块二 · 角色提取', fileHint: '02_模块二_角色提取.txt', description: '决定谁需要出图定妆、基础形象与造型拆分、人物文字形象及待办清单规则。', default: '' },
-  { key: 'props', label: '模块三 · 道具提取', fileHint: '03_模块三_道具提取.txt', description: '决定哪些叙事道具必须出图及状态版规则（不含在卖商品）。', default: '' },
-  { key: 'products', label: '模块四 · 商品提取', fileHint: '04_模块四_商品.txt', description: '决定剧本里在卖商品的资产名、分镜嵌入写法与商品出场清单。', default: '' },
-  { key: 'characterVariants', label: '模块五 · 角色追加形象', fileHint: '05_模块五_角色追加形象.txt', description: '决定如何拿基础形象图作为参考图生成换装/换造型角色图。', default: '' },
-  { key: 'breakdown', label: '模块六 · 分镜拆解', fileHint: '06_模块六_分镜.txt', description: '控制剧本如何拆段、台词计时、机位连贯性与每段提示词撰写。', default: '' },
-  { key: 'storyboardFormat', label: '分镜输出格式（可选覆盖）', fileHint: '单独覆盖输出版式时填写', description: '留空时直接使用模块六里的输出格式（若已包含）；单独填写时支持 {{DURATION}}、{{ASPECT}}、{{FRAME_RULE}} 等占位符。', default: '' },
+  { key: 'gem1', label: 'Gem 1 · 剧本拆分与资产', fileHint: '把剧本或小说拆成带时长的小段，并提取资产', description: '对应第一个 Gemini Gem：把整本剧本或小说拆分成一段段标明时长的可用小段剧本，并梳理出场的人物、场景、道具与商品清单。留空时不附加自定义规则。', default: '' },
+  { key: 'gem2', label: 'Gem 2 · 分镜提示词生成', fileHint: '根据拆好的小段剧本生成分镜视频提示词', description: '对应第二个 Gemini Gem：每次只拿 Gem 1 拆好的某一小段剧本与本节资产，严格按你的模板与约束生成分镜视频提示词（支持 {{DURATION}}、{{ASPECT}} 等可选占位符）。留空时不附加自定义规则。', default: '' },
 ];
 
-export const outputContract = '固定结构：资产为 {assets:[{key,kind,name,referenceKey?,description,prompt}]}，kind 为 character / scene / prop / product（商品请使用 product，方便单独归入商品栏并拖入实拍商品图替换）；分镜为 {shots:[{title,description,duration,promptTemplate}]}。引用使用 {{ref:资产key}}，程序自动转成 @图片文件名。可直接拖拽或批量选择「00_公共约定 + 01~06 模块」TXT 文件一键填入。';
+export const outputContract = '双 Gem 流程固定对接格式：\n· Gem 1 输出资产清单 {assets:[{key,kind,name,aspectRatio?,referenceKey?,noImage?,description,prompt}]}（kind 为 character / scene / prop / product）与分段小剧本 {shots:[{title,scriptExcerpt,description,duration,assetKeys}]}。\n· Gem 2 只接收当前这一小段的 scriptSegment 与本节对应资产，生成 {shots:[{title,description,duration,promptTemplate}]}，引用自动映射为 @素材名。';
 
 export function resolvePrompts(overrides = {}) {
   return Object.fromEntries(promptDefinitions.map(item => [item.key, String(overrides[item.key] || '').trim() || item.default]));
@@ -38,7 +31,10 @@ export function resolvePrompts(overrides = {}) {
 export class PromptSettings {
   constructor(path) { this.path = path; this.overrides = {}; this.writes = Promise.resolve(); }
   async init() {
-    try { this.overrides = JSON.parse(await readFile(this.path, 'utf8')); }
+    try {
+      const loaded = JSON.parse(await readFile(this.path, 'utf8'));
+      this.overrides = Object.fromEntries(promptDefinitions.map(item => [item.key, String(loaded?.[item.key] || '').trim()]));
+    }
     catch (error) { if (error.code !== 'ENOENT') throw error; }
   }
   effective() { return resolvePrompts(this.overrides); }

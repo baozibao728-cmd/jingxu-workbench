@@ -10,19 +10,19 @@ import {Workflow} from '../src/workflow.js';
 
 const settings={deepseek:{apiKey:'fake',model:'text'},grsai:{apiKey:'fake',model:'gpt-image-fake'},fydmai:{apiKey:'fake',model:'c7-wan3',baseUrl:'https://video.example'}};
 
-test('系统提示词各项独立持久化，空白项和恢复默认使用内置规则',async()=>{
+test('系统提示词各项独立持久化，空白项和恢复默认均保持留空',async()=>{
   const root=await mkdtemp(join(tmpdir(),'drama-prompts-'));
   try{
     const store=new PromptSettings(join(root,'prompts.json'));await store.init();
     const defaults=store.effective();
-    assert.equal(Object.keys(defaults).length,8);
-    await store.save({characters:'自定义角色规则',scenes:'  '});
+    assert.deepEqual(defaults,{gem1:'',gem2:''});
+    await store.save({gem1:'自定义 Gem1 拆分规则',gem2:'  '});
     const reload=new PromptSettings(join(root,'prompts.json'));await reload.init();
-    assert.equal(reload.effective().characters,'自定义角色规则');
-    assert.equal(reload.effective().scenes,defaults.scenes);
-    await reload.save({characters:''});
+    assert.equal(reload.effective().gem1,'自定义 Gem1 拆分规则');
+    assert.equal(reload.effective().gem2,'');
+    await reload.save({gem1:''});
     assert.deepEqual(reload.effective(),defaults);
-    await assert.rejects(reload.save({props:'a'.repeat(200001)}),/20万字/);
+    await assert.rejects(reload.save({gem2:'a'.repeat(200001)}),/20万字/);
     assert.deepEqual(reload.effective(),defaults);
   }finally{await rm(root,{recursive:true,force:true});}
 });
@@ -48,7 +48,7 @@ test('45段剧本先列46项资产，勾选后只生1张图；分镜中断可续
   let imageCalls=0,videoCalls=0,storyCalls=0,failOnce=true,customUsed=false;
   const project=await store.create({title:'长剧本测试',script:'【人物小传】\n主角资料\n'+Array.from({length:45},(_,i)=>`场景${i+1}：[内景]\n主角：“第${i+1}句原文。”\n`).join(''),clipDuration:15,resolution:'720p'});
   const workflow=new Workflow(store,()=>settings,{
-    getPrompts:()=>resolvePrompts({characters:'仅提取当前段落出场人物，CUSTOM-RULE'}),intervalMs:1,
+    getPrompts:()=>resolvePrompts({gem1:'仅提取当前段落出场人物，CUSTOM-RULE'}),intervalMs:1,analysisMaxChars:25,
     factories:{
       text:()=>({generateJson:async({instructions,input})=>{
         const data=JSON.parse(input);
