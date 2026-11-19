@@ -1,4 +1,4 @@
-import { readFile, writeFile, copyFile, access } from 'node:fs/promises';
+import { readFile, writeFile, copyFile, access, unlink } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { DeepSeekProvider, GrsaiImageProvider, FydmaiVideoProvider, localImageReference } from './providers.js';
@@ -587,20 +587,20 @@ ${customGem1 ? `【Gem 1 · 用户系统提示词】\n${customGem1}\n\n` : ''}�
     ids.forEach(assetId => this.asset(project, assetId));
     const config = this.config();
     if (!config.grsai.apiKey || !config.deepseek.apiKey) fail('请先配置文本和生图服务');
-    const selectionChanged = project.assets.some(asset => (asset.selected !== false) !== ids.includes(asset.id));
-    if (selectionChanged && project.shots.some(shot => shot.promptTemplate)) fail('已有分镜引用当前资产清单，请另建版本后更改资产选择；已有图片可单独重做');
-    project.assets.forEach(asset => { asset.selected = ids.includes(asset.id); });
-    if (selectionChanged && project.shots.length) {
-      const selectedSet = new Set(ids);
-      for (const shot of project.shots) {
-        const filtered = shot.assetIds.filter(aid => selectedSet.has(aid));
-        shot.assetIds = filtered.length ? filtered : ids.slice(0, Math.min(9, this.videoProfile(project).maxReference || 9));
-      }
+    const hasShots = project.shots.length > 0;
+    const hasPromptedShots = project.shots.some(shot => shot.promptTemplate);
+    if (!hasShots) {
+      project.assets.forEach(asset => { asset.selected = ids.includes(asset.id); });
+    } else {
+      project.assets.forEach(asset => {
+        if (ids.includes(asset.id)) asset.selected = true;
+        else if (!hasPromptedShots && asset.image) asset.selected = true;
+      });
     }
     project.preparation = { state: 'running', phase: 'images', stage: '生成你选中的资产图', completed: 0, total: ids.length };
     this.store.log(project, `你选择了${ids.length}项资产。已完成的图片直接复用，${automatic ? '全自动衔接分镜与视频' : '可同时在下方勾选分镜生成或填写提示词'}。`);
     await this.store.save(project);
-    await this.launch(`prepare:${id}`, () => this.prepareSelectedAssets(project, { automatic }));
+    await this.launch(`prepare:${id}`, () => this.prepareSelectedAssets(project, { automatic, targetIds: ids }));
     return this.view(project);
   }
   bindAssetReferences(project, entries, keyMap) {
@@ -645,9 +645,10 @@ ${customGem1 ? `【Gem 1 · 用户系统提示词】\n${customGem1}\n\n` : ''}�
     if (!ref.image?.file) throw new Error(`请先生成基础参考图“${ref.name}”，再拿它作为参考生成“${asset.name}”`);
     return [ref];
   }
-  async prepareSelectedAssets(project, { automatic = false } = {}) {
+  async prepareSelectedAssets(project, { automatic = false, targetIds = null } = {}) {
     try {
-      const selected = project.assets.filter(asset => asset.selected !== false);
+      const targetSet = Array.isArray(targetIds) && targetIds.length ? new Set(targetIds) : null;
+      const selected = project.assets.filter(asset => targetSet ? targetSet.has(asset.id) : asset.selected !== false);
       let remaining = selected.filter(asset => !asset.image);
       const errors = [];
       // 分波次生成：先生成第一张基础设定/主图，再拿第一张图做参考图继续生成该角色的其他穿搭或场景/道具变体。
@@ -678,7 +679,8 @@ ${customGem1 ? `【Gem 1 · 用户系统提示词】\n${customGem1}\n\n` : ''}�
       const alreadyOutlined = !automatic && project.shots.length > 0 && project.chunks?.every(chunk => chunk.referenceOnly || ['completed', 'outlined'].includes(chunk.storyboardState));
       if (automatic && project.shots.length > 0 && project.shots.some(s => !s.promptTemplate)) {
         const unprompted = project.shots.filter(s => !s.promptTemplate);
-        const promptAssets = selected.length ? selected : project.assets;
+        const activeAssets = project.assets.filter(asset => asset.selected !== false);
+        const promptAssets = activeAssets.length ? activeAssets : project.assets;
         const promptKeys = referenceKeys(promptAssets), promptRules = this.getPrompts();
         const profile = this.videoProfile(project), maxRef = Math.min(9, profile.maxReference || 9);
         project.preparation.phase = 'storyboards'; project.preparation.stage = `生成分镜提示词 0 / ${unprompted.length}`; project.preparation.completed = 0; project.preparation.total = unprompted.length;
@@ -912,6 +914,41 @@ ${customGem2 ? `【Gem 2 · 用户系统提示词】\n${customGem2}\n\n` : ''}�
       }
     }
     project.revision++; await this.store.save(project); return this.view(project);
+  }
+  async deleteAsset(id, assetId) {
+    const project = this.store.get(id), asset = this.asset(project, assetId);
+    if (jobActive(asset.job) || (jobActive(project.preparation) && project.preparation.phase !== 'images')) fail('项目或该素材正在处理中，请完成后再删除', 409);
+    const activeShot = project.shots.find(shot => (shot.assetIds || []).includes(assetId) && (jobActive(shot.job) || jobActive(shot.rebuildJob)));
+    if (activeShot) fail(`${activeShot.title} 正在处理中，请完成后再删除其引用的资产`, 409);
+    project.assets = project.assets.filter(item => item.id !== assetId);
+    for (const item of project.assets) {
+      if (item.referenceAssetId === assetId) delete item.referenceAssetId;
+    }
+    for (const chunk of project.chunks || []) {
+      if (Array.isArray(chunk.assetIds)) chunk.assetIds = chunk.assetIds.filter(aid => aid !== assetId);
+    }
+    if (project.characterAudios) delete project.characterAudios[assetId];
+    const refPattern = new RegExp(`\\{\\{ref:${assetId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\}\\}`, 'g');
+    for (const shot of project.shots || []) {
+      shot.assetIds = (shot.assetIds || []).filter(aid => aid !== assetId);
+      if (shot.promptTemplate && refPattern.test(shot.promptTemplate)) {
+        shot.promptTemplate = shot.promptTemplate.replace(refPattern, asset.name);
+        delete shot.continuity;
+        delete shot.continuityReview;
+      }
+    }
+    const candidateFiles = new Set([asset.image?.file, ...(asset.history || []).map(h => h?.file)].filter(Boolean));
+    const stillUsed = new Set([
+      ...project.assets.flatMap(a => [a.image?.file, ...(a.history || []).map(h => h?.file)]),
+      ...(project.shots || []).flatMap(s => (s.job?.snapshot?.assets || []).map(sa => sa.file)),
+    ].filter(Boolean));
+    for (const file of candidateFiles) {
+      if (!stillUsed.has(file)) await unlink(this.store.media(project.id, file)).catch(() => {});
+    }
+    project.revision++;
+    this.store.log(project, `已删除不需要的资产“${asset.name}”。`);
+    await this.store.save(project);
+    return this.view(project);
   }
   async regenerateAsset(id, assetId, { resume = false, count = 1 } = {}) {
     const project = this.store.get(id), asset = this.asset(project, assetId);

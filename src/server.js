@@ -237,6 +237,7 @@ export async function createApplication({ root = join(applicationRoot, 'data', '
           if (segments[3] === 'assets' && segments[4]) {
             const assetId = segments[4];
             if (segments.length === 5 && request.method === 'PATCH') return send(response, 200, await workflow.editAsset(id, assetId, await body(request)));
+            if (segments.length === 5 && request.method === 'DELETE') return send(response, 200, await workflow.deleteAsset(id, assetId));
             if (segments[5] === 'voice' && request.method === 'POST') return send(response, 200, await workflow.generateSingleCharacterVoice(id, assetId, await body(request)));
             if (segments[5] === 'voice' && request.method === 'PATCH') return send(response, 200, await workflow.bindCharacterVoice(id, assetId, (await body(request)).audioId));
             if (segments[5] === 'generate' && request.method === 'POST') return send(response, 202, await workflow.regenerateAsset(id, assetId, await body(request)));

@@ -654,3 +654,78 @@ test('两颗 Gem 模式：默认整本送 Gem1 拆段（不按场景正则提前
     assert.ok(!gem2Call.instructions.includes('GEM1_SPLIT_PROMPT'));
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+test('分镜已写提示词后仍可只勾部分资产点生成所选测试生图；支持删除不需要的资产并清理引用', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'drama-partial-gen-delete-'));
+  const store = new ProjectStore(root); await store.init();
+  let app;
+  const generatedPrompts = [];
+  const workflowOptions = {
+    intervalMs: 1,
+    factories: {
+      text: () => ({
+        generateJson: async ({ input }) => {
+          const data = JSON.parse(input);
+          if (data.chunk) {
+            return {
+              assets: [
+                { key: 'lin', kind: 'character', name: '林晚', description: '主角', prompt: 'Woman portrait' },
+                { key: 'extra', kind: 'character', name: '豆包', description: '路人', prompt: 'Child portrait' },
+              ],
+              shots: [
+                { title: '第一镜', scriptExcerpt: '林晚和豆包在门口。', description: '对话', duration: 15, assetKeys: ['lin', 'extra'] },
+              ],
+            };
+          }
+          return { shots: [{ title: '第一镜', duration: 15, promptTemplate: `{{ref:${data.assets[0].key}}} 和 {{ref:${data.assets[1].key}}} 站在门口。` }] };
+        },
+      }),
+      image: () => ({
+        submit: async ({ prompt }) => {
+          generatedPrompts.push(prompt);
+          return { id: 'img-1', status: 'completed', urls: ['https://example.com/1.png'] };
+        },
+      }),
+    },
+    download: async (_url, path) => { await writeFile(path, Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])); },
+  };
+  try {
+    await writeFile(join(root, 'package.json'), '{"version":"1.5.16"}');
+    app = await createApplication({ root, config: config(), seedDemo: false, updateRoot: root, workflowOptions });
+    await new Promise(r => app.server.listen(0, '127.0.0.1', r));
+    const base = 'http://127.0.0.1:' + app.server.address().port;
+    const headers = { 'Content-Type': 'application/json', 'X-Workflow-Token': app.token };
+    const created = await (await fetch(`${base}/api/projects`, { method: 'POST', headers, body: JSON.stringify({ title: '部分生图与删除测试', script: '林晚和豆包在门口说话。', aspectRatio: '9:16' }) })).json();
+
+    await fetch(`${base}/api/projects/${created.id}/prepare`, { method: 'POST', headers });
+    await Promise.allSettled([...app.workflow.active.values()]);
+    let p = app.workflow.store.get(created.id);
+    const lin = p.assets.find(a => a.name === '林晚');
+    const extra = p.assets.find(a => a.name === '豆包');
+
+    // 先生成第 1 条分镜提示词，再只勾选「林晚」生成所选测试生图（不再被“已有分镜引用”报错拦截）
+    await app.workflow.generateShotPrompts(created.id, [p.shots[0].id]);
+    await Promise.allSettled([...app.workflow.active.values()]);
+    const genRes = await fetch(`${base}/api/projects/${created.id}/generate-assets`, { method: 'POST', headers, body: JSON.stringify({ assetIds: [lin.id] }) });
+    assert.equal(genRes.status, 202);
+    await Promise.allSettled([...app.workflow.active.values()]);
+
+    p = app.workflow.store.get(created.id);
+    assert.equal(generatedPrompts.length, 1);
+    assert.ok(p.assets.find(a => a.id === lin.id).image);
+    assert.equal(p.assets.find(a => a.id === extra.id).image, undefined);
+    assert.deepEqual(p.shots[0].assetIds, [lin.id, extra.id]);
+
+    // 删除不需要的「豆包」资产，同时将分镜中的 {{ref:extra}} 转为纯文字名称避免死链
+    const delRes = await fetch(`${base}/api/projects/${created.id}/assets/${extra.id}`, { method: 'DELETE', headers });
+    assert.equal(delRes.status, 200);
+    p = app.workflow.store.get(created.id);
+    assert.equal(p.assets.some(a => a.id === extra.id), false);
+    assert.deepEqual(p.shots[0].assetIds, [lin.id]);
+    assert.ok(!p.shots[0].promptTemplate.includes(extra.id));
+    assert.match(p.shots[0].promptTemplate, /豆包/);
+  } finally {
+    if (app) { app.workflow.stopping = true; await new Promise(r => app.server.close(r)); }
+    await rm(root, { recursive: true, force: true });
+  }
+});

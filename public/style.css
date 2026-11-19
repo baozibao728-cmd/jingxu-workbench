@@ -345,6 +345,7 @@ html[data-sidebar=collapsed] .theme-switch button{flex:0 0 26px;width:26px;heigh
 .asset-card.is-pickable .asset-tools,.shot-card.is-pickable .shot-actions{opacity:.35}
 .asset-card.is-pickable *,.shot-card.is-pickable *{cursor:pointer}
 .asset-pick-toggle.active,.asset-pick-toggle.active:hover:not(:disabled){background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent-ink)}
+.asset-tools .asset-delete-btn:hover{color:var(--red);background:var(--accent-soft)}
 .asset-choice input{width:18px;height:18px}
 
 /* 侧栏加宽后，展开状态的间距和字号跟着放开一点 */
